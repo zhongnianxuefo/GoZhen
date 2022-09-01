@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/beevik/etree"
+	"io/ioutil"
+	"os"
 )
 
 const ZhenTempValuesLen = 10
@@ -14,9 +16,10 @@ type ZhenState struct {
 	localValues  ZhenValueTable
 	tempValues   [ZhenTempValuesLen]ZhenValue
 
+	txtCode  TxtCode
 	allCodes []ZhenCode
 
-	allCodeStepPointers []ZhenCodeStep
+	allCodeStepPointers []*ZhenCodeStep
 	runCodeStep         int
 }
 
@@ -35,6 +38,28 @@ func (zhen *ZhenState) getRunInfo() (info string) {
 		//s := zhen.allCodeStepPointers[zhen.runCodeStep]
 		info = fmt.Sprintf("程序运行到%d步", zhen.runCodeStep)
 	}
+	return
+}
+func (zhen *ZhenState) LoadTxtFile(fileName string) (err error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		return
+	}
+
+	return zhen.LoadTxt(string(content))
+}
+func (zhen *ZhenState) LoadTxt(codes string) (err error) {
+	zhen.txtCode, err = newTxtCode(codes)
+	if err != nil {
+		return
+	}
+	//fmt.Print(zhen.txtCode.toString())
+
 	return
 }
 func (zhen *ZhenState) LoadString(code string) (err error) {
@@ -76,7 +101,7 @@ func (zhen *ZhenState) AddCode(code ZhenCode) {
 	if code.needRun {
 		for i := range code.codeSteps {
 			//fmt.Println(i, s, &code.codeSteps[i])
-			zhen.allCodeStepPointers = append(zhen.allCodeStepPointers, code.codeSteps[i])
+			zhen.allCodeStepPointers = append(zhen.allCodeStepPointers, &code.codeSteps[i])
 		}
 	}
 
@@ -104,14 +129,14 @@ func (zhen *ZhenState) GetTempVarValue(tempValueNo int) (value ZhenValue) {
 	return
 }
 
-func (zhen *ZhenState) Var(s *ZhenCodeStep) {
-	//todo 局部变量如何处理
-	zhen.globalValues[s.valueName1] = s.value
-	if zhen.debug {
-		fmt.Printf("定义变量：%s，初始数值为：%s\n", s.valueName1, ZhenValueToString(s.value))
-	}
-
-}
+//func (zhen *ZhenState) Var(s *ZhenCodeStep) {
+//	//todo 局部变量如何处理
+//	zhen.globalValues[s.valueName1] = s.value
+//	if zhen.debug {
+//		fmt.Printf("定义变量：%s，初始数值为：%s\n", s.valueName1, ZhenValueToString(s.value))
+//	}
+//
+//}
 
 //func (zhen *ZhenState) Assign(s *ZhenCodeStep) {
 //	//todo 局部变量如何处理
@@ -127,9 +152,9 @@ func (zhen *ZhenState) Var(s *ZhenCodeStep) {
 //
 //}
 
-func (zhen *ZhenState) codeStepRun(s ZhenCodeStep) (err error) {
-
-	switch s.codeStepType {
+func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
+	st := s.codeStepType
+	switch st {
 	case ZCS_None:
 
 	case ZCS_Var:
@@ -137,25 +162,26 @@ func (zhen *ZhenState) codeStepRun(s ZhenCodeStep) (err error) {
 	case ZCS_As:
 		v := zhen.GetVarValue(s.valueName1)
 		zhen.SetVarValue(s.valueName2, v)
-	case ZCS_Add:
+
+	case ZCS_Add, ZCS_Sub, ZCS_Mul, ZCS_Div, ZCS_Eq, ZCS_Ne, ZCS_Gt, ZCS_Lt, ZCS_And, ZCS_Or:
 		v1 := zhen.GetVarValue(s.valueName1)
 		v2 := zhen.GetVarValue(s.valueName2)
 		var v ZhenValue
-		v, err = ZhenValueAdd(v1, v2)
+		v, err = ZhenValueOperation(st, v1, v2)
 		if err != nil {
 			return
 		}
 		zhen.SetTempVarValue(s.tempValueNo1, v)
-	case ZCS_Sub:
-	case ZCS_Mul:
-	case ZCS_Div:
-	case ZCS_Eq:
-	case ZCS_Ne:
-	case ZCS_Gt:
-	case ZCS_Lt:
-	case ZCS_And:
-	case ZCS_Or:
+
 	case ZCS_Not:
+		v1 := zhen.GetVarValue(s.valueName1)
+		var v2 ZhenValue
+		var v ZhenValue
+		v, err = ZhenValueOperation(st, v1, v2)
+		if err != nil {
+			return
+		}
+		zhen.SetTempVarValue(s.tempValueNo1, v)
 
 	case ZCS_TVar:
 		zhen.SetTempVarValue(s.tempValueNo1, s.value)
@@ -165,42 +191,55 @@ func (zhen *ZhenState) codeStepRun(s ZhenCodeStep) (err error) {
 	case ZCS_TAs:
 		v := zhen.GetTempVarValue(s.tempValueNo1)
 		zhen.SetVarValue(s.valueName1, v)
-	case ZCS_TAdd:
+	case ZCS_TAdd, ZCS_TSub, ZCS_TMul, ZCS_TDiv, ZCS_TEq, ZCS_TNe, ZCS_TGt, ZCS_TLt, ZCS_TAnd, ZCS_TOr:
 		v1 := zhen.GetTempVarValue(s.tempValueNo1)
 		v2 := zhen.GetVarValue(s.valueName1)
 		var v ZhenValue
-		v, err = ZhenValueAdd(v1, v2)
+
+		v, err = ZhenValueOperation(st, v1, v2)
 		if err != nil {
 			return
 		}
 		zhen.SetTempVarValue(s.tempValueNo1, v)
-	case ZCS_TSub:
-	case ZCS_TMul:
-	case ZCS_TDiv:
-	case ZCS_TEq:
-	case ZCS_TNe:
-	case ZCS_TGt:
-	case ZCS_TLt:
-	case ZCS_TAnd:
-	case ZCS_TOr:
+
 	case ZCS_TNot:
+
+		v1 := zhen.GetTempVarValue(s.tempValueNo1)
+		var v2 ZhenValue
+		var v ZhenValue
+		v, err = ZhenValueOperation(st, v1, v2)
+		if err != nil {
+			return
+		}
+		zhen.SetTempVarValue(s.tempValueNo1, v)
+
 	case ZCS_TTAs:
-	case ZCS_TTAdd:
-	case ZCS_TTSub:
-	case ZCS_TTMul:
-	case ZCS_TTDiv:
-	case ZCS_TTEq:
-	case ZCS_TTNe:
-	case ZCS_TTGt:
-	case ZCS_TTLt:
-	case ZCS_TTAnd:
-	case ZCS_TTOr:
+		v := zhen.GetTempVarValue(s.tempValueNo1)
+		zhen.SetTempVarValue(s.tempValueNo2, v)
+	case ZCS_TTAdd, ZCS_TTSub, ZCS_TTMul, ZCS_TTDiv, ZCS_TTEq, ZCS_TTNe, ZCS_TTGt, ZCS_TTLt, ZCS_TTAnd, ZCS_TTOr:
+		v1 := zhen.GetTempVarValue(s.tempValueNo1)
+		v2 := zhen.GetTempVarValue(s.tempValueNo2)
+		var v ZhenValue
+
+		v, err = ZhenValueOperation(st, v1, v2)
+		if err != nil {
+			return
+		}
+		zhen.SetTempVarValue(s.tempValueNo1, v)
+
 	case ZCS_If:
+		//todo 条件判断指令
+
 	case ZCS_For:
+		//todo 次数循环指令
 	case ZCS_While:
+		//todo 条件循环指令
 	case ZCS_Break:
+		//todo 跳出循环指令
 	case ZCS_Return:
+		//todo 返回指令
 	case ZCS_Call:
+		//todo 运行函数指令
 	case ZCS_PrintVar:
 		v := zhen.GetVarValue(s.valueName1)
 		fmt.Printf("变量：%s，值为：%s\n", s.valueName1, ZhenValueToString(v))
