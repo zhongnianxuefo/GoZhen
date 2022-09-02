@@ -70,11 +70,13 @@ type ZhenCodeStep struct {
 	tempValueNo2 int
 	value        ZhenValue
 }
+
 type ZhenCodeWord struct {
 	tag     string
 	content string
 }
-type ZhenCode struct {
+
+type ZhenCodeOld struct {
 	needRun   bool
 	codeWords []ZhenCodeWord
 	codeSteps []ZhenCodeStep

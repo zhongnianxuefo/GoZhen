@@ -13,21 +13,79 @@ type TxtCodeWordPos struct {
 }
 
 type TxtCodeWord struct {
-	Pos   TxtCodeWordPos
-	Words string
+	Pos      TxtCodeWordPos
+	Words    string
+	EndSpace bool
+	Type     TxtCodeWordType
 }
 
-type TxtCodeBlock struct {
-	LineNo int
-	Blocks []TxtCodeBlock
-}
-type TxtCode struct {
-	Txt   string
+type TxtCodeLine struct {
+	Floor int
 	Words []TxtCodeWord
 }
+type TxtCodeType int
+
+const (
+	TCT_Block TxtCodeType = iota
+	TCT_Line
+)
+
+type TxtCodeBlock struct {
+	FirstLine  TxtCodeLine
+	ChildLines []TxtCodeBlock
+}
+
+type TxtCode struct {
+	Txt string
+
+	Words      []TxtCodeWord
+	CodeBlocks []TxtCodeBlock
+}
+type TxtCodeRuneType int
+
+const (
+	TCRY_LeftQuotation TxtCodeRuneType = iota
+	TCRY_RightQuotation
+	TCRY_LeftBracket
+	TCRY_RightBracket
+	TCRY_Space
+	TCRY_Tab
+	TCRY_Note
+	TCRY_EndLine
+	TCRY_Colon
+	TCRY_Comma
+	TCRY_DH
+	TCRY_Semicolon
+	TCRY_Period
+	TCRY_Operator
+	TCRY_Mark
+	TCRY_Other
+)
+
+type TxtCodeWordType int
+
+const (
+	TCWY_String TxtCodeWordType = iota
+	TCWY_Note
+	TCWY_Tab
+	TCWY_Space
+	TCWY_NewLine
+	TCWY_LeftBracket
+	TCWY_RightBracket
+	TCWY_Colon
+	TCWY_Comma
+	TCWY_DH
+	TCWY_Semicolon
+	TCWY_Period
+	TCWY_Operator
+	TCWY_Word
+	TCWY_Number
+	TCWY_KeyWord
+	TCWY_Other
+)
 
 func newTxtCode(codes string) (txtCode TxtCode, err error) {
-	txtCode.Txt = strings.ReplaceAll(codes, "\r\n", "\n")
+	txtCode.Txt = codes //strings.ReplaceAll(codes, "\r\n", "\n")
 	err = txtCode.AnalyzeWords()
 	if err != nil {
 		return
@@ -35,146 +93,349 @@ func newTxtCode(codes string) (txtCode TxtCode, err error) {
 
 	return
 }
+func (txt *TxtCode) AnalyzeWordsStepA() (err error) {
+	txtCode := txt.Txt
+	startPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
+	isQuotation := false
+	isNote := false
+	isWord := false
+	var allWords []TxtCodeWord
+	addWord := func(pos TxtCodeWordPos, endWordNo int, wordType TxtCodeWordType) {
+		var word TxtCodeWord
+		word.Pos = pos
+		word.Words = txt.Txt[pos.WordNo:endWordNo]
+		word.Type = wordType
+		allWords = append(allWords, word)
+	}
 
-func (txt *TxtCode) addWord(pos TxtCodeWordPos, endWordNo int) {
-	var word TxtCodeWord
-	word.Pos = pos
-	word.Words = txt.Txt[pos.WordNo:endWordNo]
-	txt.Words = append(txt.Words, word)
-
-}
-func (txt *TxtCode) AnalyzeWords() (err error) {
-	t := txt.Txt
-
-	quotationPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
-	bracketsPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
-	wordPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
-	bracketsCount := 0
-
-	pos := TxtCodeWordPos{WordNo: 0, LineNo: 0, ColNo: 0}
-
-	for n, w := range t {
-		pos.WordNo = n
-		l := len(string(w))
-
-		var newLine = false
-		var startQuotation = false
-		var endQuotation = false
-		var startBrackets = false
-		var endBrackets = false
-		var startWord = false
-		var endWord = false
-		var isMark = false
-
-		switch w {
+	nowPos := TxtCodeWordPos{WordNo: 0, LineNo: 0, ColNo: 0}
+	for n, r := range txtCode {
+		nowPos.WordNo = n
+		l := len(string(r))
+		var t TxtCodeRuneType
+		switch r {
 		case '“':
-			startQuotation = true
-			endWord = true
+			t = TCRY_LeftQuotation
 		case '”':
-			endQuotation = true
-			endWord = true
+			t = TCRY_RightQuotation
+		case '#':
+			t = TCRY_Note
+		case ' ', '　':
+			t = TCRY_Space
+		case '\n', '\r':
+			t = TCRY_EndLine
 		case '(', '（':
-			startBrackets = true
-			endWord = true
+			t = TCRY_LeftBracket
 		case ')', '）':
-			endBrackets = true
-			endWord = true
-		case ' ':
-			endWord = true
-		case '=', '+', '-', '*', '/', '<', '>', '\\',
-			',', ';', ':', '，', '。', '、', '；', '：',
-			'\t':
-			endWord = true
-			isMark = true
-		case '\n':
-			newLine = true
-			endWord = true
-			isMark = true
+			t = TCRY_RightBracket
+		case '\t':
+			t = TCRY_Tab
+		case ':', '：':
+			t = TCRY_Colon
+		case '、':
+			t = TCRY_DH
+		case ',', '，':
+			t = TCRY_Comma
+		case '。':
+			t = TCRY_Period
+		case ';', '；':
+			t = TCRY_Semicolon
+		case '=', '+', '-', '*', '/', '<', '>':
+			t = TCRY_Operator
+			//t = TCRY_Mark
 		default:
-			startWord = true
+			t = TCRY_Other
 		}
-		if startQuotation {
-			if endWord && wordPos.WordNo >= 0 {
-				txt.addWord(wordPos, n)
-				wordPos.WordNo = -1
+
+		if isQuotation == false && isNote == false {
+			if isWord == false {
+				if t == TCRY_Other {
+					isWord = true
+					startPos = nowPos
+				}
+			} else if t != TCRY_Other {
+				isWord = false
+				addWord(startPos, n, TCWY_Word)
 			}
-			quotationPos = pos
-		} else if endQuotation {
-			if quotationPos.WordNo >= 0 {
-				txt.addWord(quotationPos, n+l)
-				quotationPos.WordNo = -1
+		}
+
+		if t == TCRY_LeftQuotation {
+			isQuotation = true
+			startPos = nowPos
+		} else if t == TCRY_RightQuotation {
+			if isQuotation {
+				isQuotation = false
+				addWord(startPos, n+l, TCWY_String)
 			} else {
 				return errors.New("未找到匹配的引号")
 			}
-		} else if quotationPos.WordNo == -1 {
-			if startBrackets {
-				if bracketsCount == 0 {
-					if endWord && wordPos.WordNo >= 0 {
-						txt.addWord(wordPos, n)
-						wordPos.WordNo = -1
-					}
-					bracketsPos = pos
-				}
-				bracketsCount = bracketsCount + 1
-			} else if endBrackets {
-				if bracketsCount == 1 {
-					txt.addWord(bracketsPos, n+l)
-					bracketsPos.WordNo = -1
-				}
-				bracketsCount = bracketsCount - 1
-			} else if bracketsCount == 0 {
-				if startWord {
-					if wordPos.WordNo == -1 {
-						wordPos = pos
-					}
-				} else if endWord {
-					if wordPos.WordNo >= 0 {
-						txt.addWord(wordPos, n)
-						wordPos.WordNo = -1
-					}
-				}
-				if isMark {
-					txt.addWord(pos, n+l)
+		}
+
+		if isQuotation == false {
+			if t == TCRY_Note {
+				isNote = true
+				startPos = nowPos
+			} else if t == TCRY_EndLine {
+				if isNote {
+					isNote = false
+					addWord(startPos, n, TCWY_Note)
 				}
 			}
 		}
-		pos.ColNo = pos.ColNo + l
-		if newLine {
-			pos.LineNo = pos.LineNo + 1
-			pos.ColNo = 0
+
+		if isQuotation == false && isNote == false {
+			switch t {
+			case TCRY_Space:
+				addWord(nowPos, n+l, TCWY_Space)
+			case TCRY_Tab:
+				addWord(nowPos, n+l, TCWY_Tab)
+			case TCRY_EndLine:
+				addWord(nowPos, n+l, TCWY_NewLine)
+			case TCRY_LeftBracket:
+				addWord(nowPos, n+l, TCWY_LeftBracket)
+			case TCRY_RightBracket:
+				addWord(nowPos, n+l, TCWY_RightBracket)
+			case TCRY_Colon:
+				addWord(nowPos, n+l, TCWY_Colon)
+			case TCRY_Comma:
+				addWord(nowPos, n+l, TCWY_Comma)
+			case TCRY_DH:
+				addWord(nowPos, n+l, TCWY_DH)
+			case TCRY_Semicolon:
+				addWord(nowPos, n+l, TCWY_Semicolon)
+			case TCRY_Period:
+				addWord(nowPos, n+l, TCWY_Period)
+			case TCRY_Operator:
+				addWord(nowPos, n+l, TCWY_Operator)
+			}
+
+		}
+
+		nowPos.ColNo = nowPos.ColNo + l
+		if t == TCRY_EndLine {
+			nowPos.LineNo = nowPos.LineNo + 1
+			nowPos.ColNo = 0
 		}
 	}
-
-	if quotationPos.WordNo >= 0 {
-		return errors.New("未找到匹配的引号")
-	} else if bracketsCount > 0 {
-		return errors.New("未找到匹配的括号")
-	} else if wordPos.WordNo >= 0 {
-		txt.addWord(wordPos, len(t))
+	if isQuotation {
+		addWord(startPos, len(txtCode), TCWY_String)
+	} else if isNote {
+		addWord(startPos, len(txtCode), TCWY_Note)
+	} else if isWord {
+		addWord(startPos, len(txtCode), TCWY_Word)
 	}
 
+	txt.Words = allWords
+	return
+}
+
+func (txt *TxtCode) AnalyzeWordsStepB() (err error) {
+	allWords := txt.Words
+	needEndSpace := func(t1 TxtCodeWordType, t2 TxtCodeWordType) (space bool) {
+		switch t1 {
+		case TCWY_NewLine, TCWY_Tab, TCWY_Space:
+			space = false
+		case TCWY_LeftBracket, TCWY_RightBracket:
+			space = false
+		case TCWY_Colon, TCWY_Comma, TCWY_DH, TCWY_Semicolon, TCWY_Period:
+			space = false
+		default:
+			switch t2 {
+			case TCWY_NewLine, TCWY_Tab, TCWY_LeftBracket, TCWY_RightBracket:
+				space = false
+			case TCWY_Colon, TCWY_Comma, TCWY_DH, TCWY_Semicolon, TCWY_Period:
+				space = false
+			default:
+				space = true
+			}
+		}
+		return
+	}
+
+	var words []TxtCodeWord
+	checkAddWord := func(word TxtCodeWord, nextWordType TxtCodeWordType) {
+		word.EndSpace = needEndSpace(word.Type, nextWordType)
+		switch word.Type {
+		case TCWY_Space:
+
+		default:
+			words = append(words, word)
+		}
+
+	}
+
+	allWordsLen := len(allWords)
+	var ww TxtCodeWord
+	if allWordsLen > 0 {
+		ww = allWords[0]
+		for n := 1; n < allWordsLen; n = n + 1 {
+			w := allWords[n]
+
+			switch w.Type {
+			case TCWY_String, TCWY_Note, TCWY_LeftBracket, TCWY_RightBracket:
+
+				checkAddWord(ww, w.Type)
+				ww = w
+			case TCWY_Colon, TCWY_Comma, TCWY_DH, TCWY_Semicolon, TCWY_Period:
+				checkAddWord(ww, w.Type)
+				ww = w
+			case TCWY_Operator:
+				if ww.Type == TCWY_Operator {
+					ww.Words = ww.Words + w.Words
+				} else {
+					checkAddWord(ww, w.Type)
+					ww = w
+				}
+			case TCWY_Tab:
+				if ww.Type == TCWY_Tab {
+					ww.Words = ww.Words + w.Words
+				} else {
+					checkAddWord(ww, w.Type)
+					ww = w
+				}
+			case TCWY_Space:
+				if ww.Type == TCWY_Space {
+					ww.Words = ww.Words + w.Words
+				} else {
+					checkAddWord(ww, w.Type)
+					ww = w
+				}
+			case TCWY_NewLine:
+				if ww.Type == TCWY_NewLine && ww.Words == "\r" && w.Words == "\n" {
+
+					ww.Words = ww.Words + w.Words
+				} else {
+					checkAddWord(ww, w.Type)
+					ww = w
+				}
+			case TCWY_Word:
+				checkAddWord(ww, w.Type)
+				ww = w
+
+				//,TCWY_Word,TCWY_Number,TCWY_KeyWord,TCWY_Other
+
+			}
+
+		}
+
+		checkAddWord(ww, TCWY_NewLine)
+	}
+	txt.Words = words
+	return
+}
+
+func (txt *TxtCode) AnalyzeWordsStepC() (err error) {
+	allWords := txt.Words
+
+	var codeLines []TxtCodeLine
+	var codeLine TxtCodeLine
+
+	floor := 0
+	newLine := true
+	for _, word := range allWords {
+		switch word.Type {
+		case TCWY_Note:
+
+		case TCWY_Tab:
+			if newLine {
+				floor = floor + 1
+			}
+		case TCWY_NewLine:
+			if len(codeLine.Words) > 0 {
+				codeLine.Floor = floor
+				codeLines = append(codeLines, codeLine)
+			}
+			codeLine = TxtCodeLine{}
+			floor = 0
+			newLine = true
+		default:
+			codeLine.Words = append(codeLine.Words, word)
+			newLine = false
+		}
+
+	}
+
+	//var codeFloorBlocks  map[int]TxtCodeBlock
+	codeFloorBlocks := make(map[int]TxtCodeBlock)
+	parFloors := make(map[int]int)
+
+	if len(codeLines) > 0 {
+		var codeBlock TxtCodeBlock
+
+		for i := 0; i < len(codeLines)-1; i++ {
+			floor := codeLines[i].Floor
+			nextFloor := codeLines[i+1].Floor
+			var b TxtCodeBlock
+			b.FirstLine = codeLines[i]
+			if floor == nextFloor {
+				codeBlock.ChildLines = append(codeBlock.ChildLines, b)
+				codeFloorBlocks[floor] = codeBlock
+			} else if nextFloor > floor {
+				parFloors[nextFloor] = floor
+				codeBlock = TxtCodeBlock{}
+				codeBlock.FirstLine = codeLines[i]
+			} else if nextFloor < floor {
+				f := parFloors[floor]
+				codeBlock.ChildLines = append(codeBlock.ChildLines, b)
+				c := codeFloorBlocks[f]
+				c.ChildLines = append(c.ChildLines, codeBlock)
+				codeFloorBlocks[nextFloor] = c
+
+				codeBlock = codeFloorBlocks[nextFloor]
+
+			}
+
+		}
+	}
+	return
+}
+func (txt *TxtCode) AnalyzeWords() (err error) {
+	err = txt.AnalyzeWordsStepA()
+	if err != nil {
+		return
+	}
+	err = txt.AnalyzeWordsStepB()
+	if err != nil {
+		return
+	}
+	err = txt.AnalyzeWordsStepC()
+	if err != nil {
+		return
+	}
+
+	//txt.Words = words
 	return
 }
 func (txt *TxtCode) formatCode() string {
-	var lines []string
 	var words []string
-
 	for _, word := range txt.Words {
 		w := word.Words
-		switch w {
-		case "\n":
-			line := strings.TrimRight(strings.Join(words, ""), " \t")
-			lines = append(lines, line)
-			words = []string{}
-		case "\t":
-			words = append(words, w)
-		default:
-			words = append(words, w+" ")
-
+		switch word.Type {
+		case TCWY_LeftBracket:
+			w = "（"
+		case TCWY_RightBracket:
+			w = "）"
+		case TCWY_Colon:
+			w = "："
+		case TCWY_DH:
+			w = "、"
+		case TCWY_Comma:
+			w = "，"
+		case TCWY_Period:
+			w = "。"
+		case TCWY_Semicolon:
+			w = "；"
 		}
-
+		if word.Type != TCWY_Space {
+			if word.EndSpace {
+				words = append(words, w+" ")
+			} else {
+				words = append(words, w)
+			}
+		}
 	}
-	return strings.Join(lines, "\n")
+
+	return strings.Join(words, "")
 }
 
 //保存内容到文件

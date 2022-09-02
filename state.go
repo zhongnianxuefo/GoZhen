@@ -17,7 +17,7 @@ type ZhenState struct {
 	tempValues   [ZhenTempValuesLen]ZhenValue
 
 	txtCode  TxtCode
-	allCodes []ZhenCode
+	allCodes []ZhenCodeOld
 
 	allCodeStepPointers []*ZhenCodeStep
 	runCodeStep         int
@@ -72,7 +72,7 @@ func (zhen *ZhenState) LoadString(code string) (err error) {
 	program := doc.SelectElement("程序")
 
 	for _, line := range program.ChildElements() {
-		var code ZhenCode
+		var code ZhenCodeOld
 		if line.Tag == "代码行" {
 			code.needRun = true
 			for _, word := range line.ChildElements() {
@@ -96,7 +96,7 @@ func (zhen *ZhenState) LoadString(code string) (err error) {
 
 }
 
-func (zhen *ZhenState) AddCode(code ZhenCode) {
+func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 	zhen.allCodes = append(zhen.allCodes, code)
 	if code.needRun {
 		for i := range code.codeSteps {
