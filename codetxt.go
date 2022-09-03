@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -335,10 +336,10 @@ func (txt *TxtCode) AnalyzeWordsStepC() (err error) {
 	for _, word := range allWords {
 		switch word.Type {
 		case TCWY_Note:
-
+			newLine = false
 		case TCWY_Tab:
 			if newLine {
-				floor = floor + 1
+				floor = floor + len(word.Words)
 			}
 		case TCWY_NewLine:
 			if len(codeLine.Words) > 0 {
@@ -352,42 +353,147 @@ func (txt *TxtCode) AnalyzeWordsStepC() (err error) {
 			codeLine.Words = append(codeLine.Words, word)
 			newLine = false
 		}
+	}
+	//fmt.Println("************")
+	//for _, line := range codeLines {
+	//	PrintCodeLine(line)
+	//}
+	//fmt.Println("************")
+	//var codeBlocks  map[int]TxtCodeBlock
+	codeBlocks := make(map[int]TxtCodeBlock)
+	parFloors := make(map[int]int)
+	newCodeBlock := func(codeLine TxtCodeLine) (codeBlock TxtCodeBlock) {
+
+		codeBlock.FirstLine = codeLine
+		return
+	}
+	addCodeBlock := func(floor int, codeBlock TxtCodeBlock) {
+		parCodeBlock := codeBlocks[floor]
+		parCodeBlock.ChildLines = append(parCodeBlock.ChildLines, codeBlock)
+		codeBlocks[floor] = parCodeBlock
+	}
+	setCodeBlock := func(floor int, codeBlock TxtCodeBlock) {
+		codeBlocks[floor] = codeBlock
+	}
+	var closeCodeBlock func(floor int, nextFloor int)
+	closeCodeBlock = func(floor int, nextFloor int) {
+		if floor > nextFloor {
+
+			codeBlock := codeBlocks[floor]
+			parFloor := parFloors[floor]
+			addCodeBlock(parFloor, codeBlock)
+			closeCodeBlock(parFloor, nextFloor)
+		}
 
 	}
 
-	//var codeFloorBlocks  map[int]TxtCodeBlock
-	codeFloorBlocks := make(map[int]TxtCodeBlock)
-	parFloors := make(map[int]int)
-
 	if len(codeLines) > 0 {
-		var codeBlock TxtCodeBlock
-
+		//var codeBlock TxtCodeBlock
+		//codeBlocks[0] = TxtCodeBlock{}
 		for i := 0; i < len(codeLines)-1; i++ {
-			floor := codeLines[i].Floor
+			codeBlock := newCodeBlock(codeLines[i])
+			lineFloor := codeLines[i].Floor
 			nextFloor := codeLines[i+1].Floor
-			var b TxtCodeBlock
-			b.FirstLine = codeLines[i]
-			if floor == nextFloor {
-				codeBlock.ChildLines = append(codeBlock.ChildLines, b)
-				codeFloorBlocks[floor] = codeBlock
-			} else if nextFloor > floor {
-				parFloors[nextFloor] = floor
-				codeBlock = TxtCodeBlock{}
-				codeBlock.FirstLine = codeLines[i]
-			} else if nextFloor < floor {
-				f := parFloors[floor]
-				codeBlock.ChildLines = append(codeBlock.ChildLines, b)
-				c := codeFloorBlocks[f]
-				c.ChildLines = append(c.ChildLines, codeBlock)
-				codeFloorBlocks[nextFloor] = c
+			//var codeBlock TxtCodeBlock
 
-				codeBlock = codeFloorBlocks[nextFloor]
+			//fmt.Println(i, lineFloor)
+			if lineFloor == nextFloor {
+				addCodeBlock(lineFloor, codeBlock)
+				//codeBlock := codeBlocks[lineFloor]
+				//codeBlock.ChildLines = append(codeBlock.ChildLines, codeBlock)
+				//codeBlocks[lineFloor] = codeBlock
+			} else if nextFloor > lineFloor {
+				parFloors[nextFloor] = lineFloor
+				setCodeBlock(nextFloor, codeBlock)
+				//codeBlock := TxtCodeBlock{}
+				//codeBlock.FirstLine = codeLine
+				//codeBlocks[nextFloor] = codeBlock
+			} else if nextFloor < lineFloor {
+				addCodeBlock(lineFloor, codeBlock)
+				closeCodeBlock(lineFloor, nextFloor)
+				//codeBlock := codeBlocks[lineFloor]
+				//codeBlock.ChildLines = append(codeBlock.ChildLines, codeBlock)
+				//codeBlocks[lineFloor] = codeBlock
+				//
+				//for f := lineFloor - 1; f >= nextFloor; f-- {
+				//
+				//	parFloor := parFloors[f]
+				//	parCodeBlock := codeBlocks[parFloor]
+				//	parCodeBlock.ChildLines = append(parCodeBlock.ChildLines, codeBlock)
+				//	codeBlocks[parFloor] = parCodeBlock
+				//	codeBlock = codeBlocks[parFloor]
+				//}
+
+				//f := parFloors[floor]
+				//codeBlock.ChildLines = append(codeBlock.ChildLines, codeBlock)
+				//c := codeBlocks[f]
+				//c.ChildLines = append(c.ChildLines, codeBlock)
+				//codeBlocks[nextFloor] = c
+				//
+				//codeBlock = codeBlocks[nextFloor]
 
 			}
 
 		}
+
+		i := len(codeLines) - 1
+		//var b TxtCodeBlock
+		//b.FirstLine = codeLines[i]
+		codeBlock := newCodeBlock(codeLines[i])
+		lineFloor := codeLines[i].Floor
+		//codeBlock := codeBlocks[lineFloor]
+
+		addCodeBlock(lineFloor, codeBlock)
+		closeCodeBlock(lineFloor, 0)
+
+		//codeBlock.ChildLines = append(codeBlock.ChildLines, b)
+		//codeBlocks[lineFloor] = codeBlock
+		//
+		//parFloor := parFloors[lineFloor]
+		//parCodeBlock := codeBlocks[parFloor]
+		//parCodeBlock.ChildLines = append(parCodeBlock.ChildLines, codeBlock)
+		//codeBlocks[parFloor] = parCodeBlock
+
+		//codeBlock.ChildLines = append(codeBlock.ChildLines, b)
+		//codeBlocks[floor] = codeBlock
+
 	}
+	for i, c := range codeBlocks {
+		if i == 0 {
+			fmt.Println(i)
+			PrintCodeBlocksToString(c)
+		}
+
+	}
+	//PrintCodeBlocksToString(codeBlocks[0])
 	return
+}
+func PrintCodeLine(codeline TxtCodeLine) {
+	tab := strings.Repeat("\t", codeline.Floor)
+	var words []string
+	for _, w := range codeline.Words {
+		words = append(words, w.Words)
+	}
+	line := strings.Join(words, " ")
+	fmt.Println(tab, "[", line, "]")
+}
+func PrintCodeBlocksToString(codeBlock TxtCodeBlock) {
+	tab := strings.Repeat("\t", codeBlock.FirstLine.Floor)
+	var words []string
+	for _, w := range codeBlock.FirstLine.Words {
+		words = append(words, w.Words)
+	}
+
+	line := strings.Join(words, " ")
+	fmt.Println(tab, "[", line, "]")
+	if len(codeBlock.ChildLines) > 0 {
+		fmt.Println(tab, "{")
+		for _, c := range codeBlock.ChildLines {
+			PrintCodeBlocksToString(c)
+		}
+		fmt.Println(tab, "}")
+	}
+
 }
 func (txt *TxtCode) AnalyzeWords() (err error) {
 	err = txt.AnalyzeWordsStepA()
