@@ -9,8 +9,11 @@ import (
 
 type TxtCodeWordPos struct {
 	WordNo int
-	LineNo int
-	ColNo  int
+
+	StartNo  int
+	BlockLen int
+	LineNo   int
+	ColNo    int
 }
 
 type TxtCodeWord struct {
@@ -18,6 +21,18 @@ type TxtCodeWord struct {
 	Words    string
 	EndSpace bool
 	Type     TxtCodeWordType
+}
+
+type CodeBlock struct {
+	Pos          TxtCodeWordPos
+	Type         TxtCodeRuneType
+	Words        string
+	Items        []*CodeBlock
+	ParCodeBlock *CodeBlock
+}
+
+type TxtCodeWordGroup struct {
+	WordGroup []TxtCodeWordGroup
 }
 
 type TxtCodeLine struct {
@@ -51,7 +66,7 @@ const (
 	TCRY_RightBracket
 	TCRY_Space
 	TCRY_Tab
-	TCRY_Note
+	TCRY_StartNote
 	TCRY_EndLine
 	TCRY_Colon
 	TCRY_Comma
@@ -61,6 +76,10 @@ const (
 	TCRY_Operator
 	TCRY_Mark
 	TCRY_Other
+
+	TCRY_String
+	TCRY_NewLineTab
+	TCRY_Note
 )
 
 type TxtCodeWordType int
@@ -94,6 +113,223 @@ func newTxtCode(codes string) (txtCode TxtCode, err error) {
 
 	return
 }
+func (txt *TxtCode) AnalyzeWordsStep1() (err error) {
+	txtCode := txt.Txt
+	//startPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
+	//isQuotation := false
+	//isNote := false
+	//isWord := false
+
+	newCodeBlock := func(txtCode string, pos TxtCodeWordPos, codeBlockType TxtCodeRuneType) (codeBlock *CodeBlock) {
+		codeBlock = &CodeBlock{}
+		codeBlock.Pos = pos
+		codeBlock.Type = codeBlockType
+		codeBlock.Words = txtCode[pos.StartNo : pos.StartNo+pos.BlockLen]
+		return
+	}
+	codeBlockAddBlockLen := func(codeBlock *CodeBlock, addBlockLen int) {
+		codeBlock.Pos.BlockLen += addBlockLen
+		codeBlock.Words = txtCode[codeBlock.Pos.StartNo : codeBlock.Pos.StartNo+codeBlock.Pos.BlockLen]
+
+	}
+
+	addItemCodeBlock := func(codeBlock *CodeBlock, item *CodeBlock) {
+		codeBlock.Items = append(codeBlock.Items, item)
+		item.ParCodeBlock = codeBlock
+	}
+
+	var mainCodeBlock CodeBlock
+	mainCodeBlock.ParCodeBlock = &mainCodeBlock
+
+	var beforeCodeBlock *CodeBlock
+	var nowCodeBlock *CodeBlock
+	var beforeChar int32
+	var nowChar int32
+	nowPos := TxtCodeWordPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 0}
+	for n, r := range txtCode {
+		//fmt.Println(n, r, string(r))
+		nowChar = r
+		nowPos.StartNo = n
+		nowPos.BlockLen = len(string(r))
+		nowPos.ColNo = nowPos.ColNo + nowPos.BlockLen
+		var t TxtCodeRuneType
+		switch r {
+		case '“':
+			t = TCRY_LeftQuotation
+		case '”':
+			t = TCRY_RightQuotation
+		case '#':
+			t = TCRY_StartNote
+		case ' ', '　':
+			t = TCRY_Space
+		case '\n', '\r':
+			t = TCRY_EndLine
+		case '(', '（':
+			t = TCRY_LeftBracket
+		case ')', '）':
+			t = TCRY_RightBracket
+		case '\t':
+			t = TCRY_Tab
+		case ':', '：':
+			t = TCRY_Colon
+		case '、':
+			t = TCRY_DH
+		case ',', '，':
+			t = TCRY_Comma
+		case '。':
+			t = TCRY_Period
+		case ';', '；':
+			t = TCRY_Semicolon
+		case '=', '+', '-', '*', '/', '<', '>', '!':
+			t = TCRY_Operator
+			//t = TCRY_Mark
+		default:
+			t = TCRY_Other
+		}
+		nowCodeBlock = newCodeBlock(txtCode, nowPos, t)
+		if n == 0 {
+			addItemCodeBlock(&mainCodeBlock, nowCodeBlock)
+			beforeCodeBlock = nowCodeBlock
+		} else {
+			switch beforeCodeBlock.Type {
+			case TCRY_LeftQuotation:
+				if t != TCRY_RightBracket {
+					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock.Pos.BlockLen += nowPos.BlockLen
+					beforeCodeBlock.Type = TCRY_String
+				}
+
+			case TCRY_StartNote:
+				if t != TCRY_EndLine {
+					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock.Type = TCRY_Note
+					addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+					beforeCodeBlock = nowCodeBlock
+				}
+			default:
+				switch nowCodeBlock.Type {
+				case TCRY_RightBracket:
+					addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+					beforeCodeBlock = beforeCodeBlock.ParCodeBlock
+				default:
+					switch beforeCodeBlock.Type {
+					case TCRY_Space:
+						if t == TCRY_Space {
+							codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+						} else {
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						}
+
+					case TCRY_NewLineTab, TCRY_Tab:
+						if t == TCRY_Tab {
+							codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+						} else {
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						}
+
+					case TCRY_EndLine:
+						if t == TCRY_EndLine {
+							if beforeCodeBlock.Words == "\n" && nowCodeBlock.Words == "\r" {
+								codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+							} else {
+								addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+								beforeCodeBlock = nowCodeBlock
+							}
+						} else if t == TCRY_Tab {
+							nowCodeBlock.Type = TCRY_NewLineTab
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						} else {
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						}
+
+					case TCRY_LeftBracket:
+						addItemCodeBlock(beforeCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+
+					case TCRY_Colon:
+						addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+					case TCRY_Comma:
+						addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+					case TCRY_DH:
+						addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+					case TCRY_Semicolon:
+						addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+					case TCRY_Period:
+						addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+						beforeCodeBlock = nowCodeBlock
+					case TCRY_Operator:
+						if t == TCRY_Operator {
+							codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+						} else {
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						}
+					case TCRY_Other:
+						if t == TCRY_Other {
+							codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+						} else {
+							addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
+							beforeCodeBlock = nowCodeBlock
+						}
+
+					}
+				}
+			}
+
+		}
+
+		if n > 0 {
+			//fmt.Println(nowPos, "++", beforeChar, nowChar, string(nowChar))
+			if (beforeChar == '\n') && (nowChar == '\r') {
+				//fmt.Println(nowPos, "+1", beforeChar, nowChar, string(nowChar))
+			} else if nowChar == '\n' || nowChar == '\r' {
+				//fmt.Println(nowPos, "+2", beforeChar, nowChar)
+				nowPos.LineNo = nowPos.LineNo + 1
+				nowPos.ColNo = 0
+			}
+		}
+		beforeChar = nowChar
+	}
+	switch beforeCodeBlock.Type {
+	case TCRY_LeftQuotation:
+		codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+	case TCRY_StartNote:
+		codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+	case TCRY_Other:
+		codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+	}
+	var printCodeBlock func(block *CodeBlock)
+	printCodeBlock = func(block *CodeBlock) {
+		fmt.Printf("%d，行%d，列%d ，长%d, %d , <%s> \n", block.Pos.StartNo, block.Pos.LineNo,
+			block.Pos.ColNo, block.Pos.BlockLen, block.Type, block.Words)
+		//fmt.Println(block.Words)
+		if len(block.Items) > 0 {
+			fmt.Println("[****")
+
+			for n, item := range block.Items {
+				fmt.Println(n)
+				printCodeBlock(item)
+
+			}
+			fmt.Println("****]")
+
+		}
+		fmt.Print()
+	}
+
+	printCodeBlock(&mainCodeBlock)
+	return
+}
 func (txt *TxtCode) AnalyzeWordsStepA() (err error) {
 	txtCode := txt.Txt
 	startPos := TxtCodeWordPos{WordNo: -1, LineNo: -1, ColNo: -1}
@@ -120,7 +356,7 @@ func (txt *TxtCode) AnalyzeWordsStepA() (err error) {
 		case '”':
 			t = TCRY_RightQuotation
 		case '#':
-			t = TCRY_Note
+			t = TCRY_StartNote
 		case ' ', '　':
 			t = TCRY_Space
 		case '\n', '\r':
@@ -173,7 +409,7 @@ func (txt *TxtCode) AnalyzeWordsStepA() (err error) {
 		}
 
 		if isQuotation == false {
-			if t == TCRY_Note {
+			if t == TCRY_StartNote {
 				isNote = true
 				startPos = nowPos
 			} else if t == TCRY_EndLine {
@@ -333,22 +569,35 @@ func (txt *TxtCode) AnalyzeWordsStepC() (err error) {
 
 	floor := 0
 	newLine := true
+	bracketCount := 0
 	for _, word := range allWords {
+
 		switch word.Type {
 		case TCWY_Note:
 			newLine = false
+		case TCWY_LeftBracket:
+			codeLine.Words = append(codeLine.Words, word)
+			newLine = false
+			bracketCount = bracketCount + 1
+		case TCWY_RightBracket:
+			codeLine.Words = append(codeLine.Words, word)
+			newLine = false
+			bracketCount = bracketCount - 1
 		case TCWY_Tab:
 			if newLine {
 				floor = floor + len(word.Words)
 			}
 		case TCWY_NewLine:
-			if len(codeLine.Words) > 0 {
-				codeLine.Floor = floor
-				codeLines = append(codeLines, codeLine)
+			if bracketCount == 0 {
+				if len(codeLine.Words) > 0 {
+					codeLine.Floor = floor
+					codeLines = append(codeLines, codeLine)
+				}
+				codeLine = TxtCodeLine{}
+				floor = 0
+				newLine = true
 			}
-			codeLine = TxtCodeLine{}
-			floor = 0
-			newLine = true
+
 		default:
 			codeLine.Words = append(codeLine.Words, word)
 			newLine = false
@@ -496,6 +745,12 @@ func PrintCodeBlocksToString(codeBlock TxtCodeBlock) {
 
 }
 func (txt *TxtCode) AnalyzeWords() (err error) {
+
+	err = txt.AnalyzeWordsStep1()
+	if err != nil {
+		return
+	}
+	return
 	err = txt.AnalyzeWordsStepA()
 	if err != nil {
 		return
