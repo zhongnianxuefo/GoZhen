@@ -36,6 +36,12 @@ func main() {
 	}
 	z.txtCode.formatToFile("Zhen/格式化演示代码1.z1")
 
+	err = z.LoadTxtFile("Zhen/格式化演示代码1.z1")
+	if err != nil {
+		fmt.Println(err)
+	}
+	z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
+
 	err = z.LoadString(codes)
 	if err != nil {
 		fmt.Println(err)
