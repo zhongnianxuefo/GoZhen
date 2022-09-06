@@ -41,7 +41,7 @@ func main() {
 		fmt.Println(err)
 	}
 	z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
-
+	z.txtCode.ToXmlFile("Zhen/格式化演示代码2.xml")
 	err = z.LoadString(codes)
 	if err != nil {
 		fmt.Println(err)

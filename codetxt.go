@@ -2,59 +2,202 @@ package main
 
 import (
 	"fmt"
+	"github.com/beevik/etree"
 	"os"
+	"strconv"
 	"strings"
 )
 
-type TxtCodeWordPos struct {
+type CodeBlockPos struct {
 	StartNo  int
 	BlockLen int
-	LineNo   int
-	ColNo    int
+
+	LineNo int
+	ColNo  int
 }
 
+type CodeBlockType int
+
+const (
+	_ CodeBlockType = iota
+	CbtLeftQuotation
+	CbtRightQuotation
+	CbtLeftBracket
+	CbtRightBracket
+	CbtSpace
+	CbtTab
+	CbtPound
+	CbtEnter
+	CbtColon
+	CbtComma
+	CbtDunHao
+	CbtSemicolon
+	CbtPeriod
+	CbtOperator
+
+	TCRY_Mark
+	CbtOtherChar
+
+	CbtFile
+	CbtLine
+
+	CbtString
+	CbtNewLineTab
+	CbtComment
+)
+
 type CodeBlock struct {
-	Pos          TxtCodeWordPos
-	Type         TxtCodeRuneType
-	NeedSpace    bool
-	Words        string
-	Items        []*CodeBlock
-	ParCodeBlock *CodeBlock
+	Pos               CodeBlockPos
+	BlockType         CodeBlockType
+	NeedTrailingSpace bool
+	Words             string
+	Items             []*CodeBlock
+	ParCodeBlock      *CodeBlock
+}
+type CodeBlockIndentation struct {
+	CodeBlocks map[int]*CodeBlock
+	Floor      int
 }
 
 type TxtCode struct {
-	Txt           string
+	CodeTxt       string
 	MainCodeBlock *CodeBlock
 }
-type TxtCodeRuneType int
 
-const (
-	TCRY_LeftQuotation TxtCodeRuneType = iota
-	TCRY_RightQuotation
-	TCRY_LeftBracket
-	TCRY_RightBracket
-	TCRY_Space
-	TCRY_Tab
-	TCRY_StartNote
-	TCRY_EndLine
-	TCRY_Colon
-	TCRY_Comma
-	TCRY_DH
-	TCRY_Semicolon
-	TCRY_Period
-	TCRY_Operator
-	TCRY_Mark
-	TCRY_Other
+func getRuneCodeBlockType(r rune) (t CodeBlockType) {
 
-	TCRY_String
-	TCRY_NewLineTab
-	TCRY_Note
-	TCRY_Line
-	TCRY_File
-)
+	switch r {
+	case '“':
+		t = CbtLeftQuotation
+	case '”':
+		t = CbtRightQuotation
+	case '#':
+		t = CbtPound
+	case ' ', '　':
+		t = CbtSpace
+	case '\n', '\r':
+		t = CbtEnter
+	case '(', '（':
+		t = CbtLeftBracket
+	case ')', '）':
+		t = CbtRightBracket
+	case '\t':
+		t = CbtTab
+	case ':', '：':
+		t = CbtColon
+	case '、':
+		t = CbtDunHao
+	case ',', '，':
+		t = CbtComma
+	case '。':
+		t = CbtPeriod
+	case ';', '；':
+		t = CbtSemicolon
+	case '=', '+', '-', '*', '/', '<', '>', '!':
+		t = CbtOperator
+		//t = TCRY_Mark
+	default:
+		t = CbtOtherChar
+	}
+	return
+}
+
+func newCodeBlockPointer(txtCode string, pos CodeBlockPos, codeBlockType CodeBlockType) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = codeBlockType
+	codeBlock.Words = txtCode[pos.StartNo : pos.StartNo+pos.BlockLen]
+	return
+}
+
+func newLineCodeBlock(pos CodeBlockPos) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = CbtLine
+	codeBlock.Words = ""
+	return
+}
+func newFileCodeBlock() (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1}
+	codeBlock.BlockType = CbtFile
+	codeBlock.Words = ""
+	codeBlock.ParCodeBlock = codeBlock
+	return
+}
+
+func needTrailingSpace(t1 CodeBlockType, t2 CodeBlockType) (space bool) {
+	switch t1 {
+	case CbtLine, CbtNewLineTab, CbtEnter, CbtTab, CbtSpace:
+		space = false
+	case CbtLeftBracket, CbtRightBracket:
+		space = false
+	case CbtColon, CbtComma, CbtDunHao, CbtSemicolon, CbtPeriod:
+		space = false
+	default:
+		switch t2 {
+		case CbtLine, CbtNewLineTab, CbtEnter, CbtTab, CbtLeftBracket, CbtRightBracket:
+			space = false
+		case CbtColon, CbtComma, CbtDunHao, CbtSemicolon, CbtPeriod:
+			space = false
+		default:
+			space = true
+		}
+	}
+	return
+}
+
+func (codeBlock *CodeBlock) addBlockLen(txtCode string, addBlockLen int) {
+	codeBlock.Pos.BlockLen += addBlockLen
+	startNo := codeBlock.Pos.StartNo
+	endNo := codeBlock.Pos.StartNo + codeBlock.Pos.BlockLen
+	codeBlock.Words = txtCode[startNo:endNo]
+}
+
+func (codeBlock *CodeBlock) addItem(item *CodeBlock) {
+	codeBlock.Items = append(codeBlock.Items, item)
+	item.ParCodeBlock = codeBlock
+}
+
+func (codeBlock *CodeBlock) appendNext(nextCodeBlock *CodeBlock) *CodeBlock {
+
+	codeBlock.NeedTrailingSpace = needTrailingSpace(codeBlock.BlockType, nextCodeBlock.BlockType)
+	codeBlock.ParCodeBlock.addItem(nextCodeBlock)
+
+	return nextCodeBlock
+}
+
+func (codeBlock *CodeBlock) appendChild(child *CodeBlock) *CodeBlock {
+	codeBlock.addItem(child)
+	return child
+}
+
+func newCodeBlockIndentation(mainCodeBlock *CodeBlock, codeBlock *CodeBlock) (codeBlockIndentation CodeBlockIndentation) {
+
+	lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+	mainCodeBlock.addItem(lineCodeBlock)
+	lineCodeBlock.addItem(codeBlock)
+	codeBlockIndentation.CodeBlocks = make(map[int]*CodeBlock)
+	codeBlockIndentation.CodeBlocks[0] = lineCodeBlock
+
+	return
+}
+func (codeBlockLines *CodeBlockIndentation) appendNewLine(floor int, codeBlock *CodeBlock) *CodeBlock {
+	lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+	if floor > codeBlockLines.Floor {
+		codeBlockLines.CodeBlocks[codeBlockLines.Floor].addItem(lineCodeBlock)
+		codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+		lineCodeBlock.addItem(codeBlock)
+	} else {
+		codeBlockLines.CodeBlocks[floor].ParCodeBlock.addItem(lineCodeBlock)
+		codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+		lineCodeBlock.addItem(codeBlock)
+	}
+	return codeBlock
+}
 
 func newTxtCode(codes string) (txtCode TxtCode, err error) {
-	txtCode.Txt = codes //strings.ReplaceAll(codes, "\r\n", "\n")
+	txtCode.CodeTxt = codes //strings.ReplaceAll(codes, "\r\n", "\n")
 	err = txtCode.AnalyzeWords()
 	if err != nil {
 		return
@@ -62,237 +205,119 @@ func newTxtCode(codes string) (txtCode TxtCode, err error) {
 
 	return
 }
-func (txt *TxtCode) AnalyzeWordsStep1() (err error) {
-	txtCode := txt.Txt
+func getCodeBlockFromTxt(txtCode string) (mainCodeBlock *CodeBlock, err error) {
 
-	needEndSpace := func(t1 TxtCodeRuneType, t2 TxtCodeRuneType) (space bool) {
-		switch t1 {
-		case TCRY_Line, TCRY_NewLineTab, TCRY_EndLine, TCRY_Tab, TCRY_Space:
-			space = false
-		case TCRY_LeftBracket, TCRY_RightBracket:
-			space = false
-		case TCRY_Colon, TCRY_Comma, TCRY_DH, TCRY_Semicolon, TCRY_Period:
-			space = false
-		default:
-			switch t2 {
-			case TCRY_Line, TCRY_NewLineTab, TCRY_EndLine, TCRY_Tab, TCRY_LeftBracket, TCRY_RightBracket:
-				space = false
-			case TCRY_Colon, TCRY_Comma, TCRY_DH, TCRY_Semicolon, TCRY_Period:
-				space = false
-			default:
-				space = true
-			}
-		}
-		return
-	}
-
-	newCodeBlock := func(txtCode string, pos TxtCodeWordPos, codeBlockType TxtCodeRuneType) (codeBlock *CodeBlock) {
-		codeBlock = &CodeBlock{}
-		codeBlock.Pos = pos
-		codeBlock.Type = codeBlockType
-		codeBlock.Words = txtCode[pos.StartNo : pos.StartNo+pos.BlockLen]
-		return
-	}
-	codeBlockAddBlockLen := func(codeBlock *CodeBlock, addBlockLen int) {
-		codeBlock.Pos.BlockLen += addBlockLen
-		codeBlock.Words = txtCode[codeBlock.Pos.StartNo : codeBlock.Pos.StartNo+codeBlock.Pos.BlockLen]
-	}
-
-	addItemCodeBlock := func(codeBlock *CodeBlock, item *CodeBlock) {
-		codeBlock.Items = append(codeBlock.Items, item)
-		item.ParCodeBlock = codeBlock
-	}
-
-	newLineCodeBlock := func(pos TxtCodeWordPos) (codeBlock *CodeBlock) {
-		codeBlock = &CodeBlock{}
-		codeBlock.Pos = pos
-		codeBlock.Type = TCRY_Line
-		codeBlock.Words = ""
-		return
-	}
-	newFileCodeBlock := func() (codeBlock *CodeBlock) {
-		codeBlock = &CodeBlock{}
-		codeBlock.Pos = TxtCodeWordPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1}
-		codeBlock.Type = TCRY_File
-		codeBlock.Words = ""
-		codeBlock.ParCodeBlock = codeBlock
-		return
-	}
-
-	appendCodeBlock := func(beforeCodeBlock *CodeBlock, nowCodeBlock *CodeBlock) *CodeBlock {
-		beforeCodeBlock.NeedSpace = needEndSpace(beforeCodeBlock.Type, nowCodeBlock.Type)
-		addItemCodeBlock(beforeCodeBlock.ParCodeBlock, nowCodeBlock)
-		return nowCodeBlock
-	}
-	appendChildCodeBlock := func(beforeCodeBlock *CodeBlock, nowCodeBlock *CodeBlock) *CodeBlock {
-		addItemCodeBlock(beforeCodeBlock, nowCodeBlock)
-		return nowCodeBlock
-	}
-
-	appendNewLineCodeBlock := func(beforeCodeBlock *CodeBlock, nowCodeBlock *CodeBlock,
-		floorCodeBlocks map[int]*CodeBlock, beforeFloor int, nowFloor int) *CodeBlock {
-
-		lineCodeBlock := newLineCodeBlock(nowCodeBlock.Pos)
-
-		if beforeFloor == nowFloor {
-			addItemCodeBlock(floorCodeBlocks[nowFloor].ParCodeBlock, lineCodeBlock)
-			floorCodeBlocks[nowFloor] = lineCodeBlock
-			addItemCodeBlock(lineCodeBlock, nowCodeBlock)
-		} else if beforeFloor < nowFloor {
-			addItemCodeBlock(floorCodeBlocks[beforeFloor], lineCodeBlock)
-			floorCodeBlocks[nowFloor] = lineCodeBlock
-			addItemCodeBlock(lineCodeBlock, nowCodeBlock)
-		} else if beforeFloor > nowFloor {
-			addItemCodeBlock(floorCodeBlocks[nowFloor].ParCodeBlock, lineCodeBlock)
-			floorCodeBlocks[nowFloor] = lineCodeBlock
-			addItemCodeBlock(lineCodeBlock, nowCodeBlock)
-		}
-		return nowCodeBlock
-	}
-
-	var mainCodeBlock *CodeBlock
 	mainCodeBlock = newFileCodeBlock()
 
-	var lineCodeBlock *CodeBlock
+	//var lineCodeBlock *CodeBlock
 	var beforeCodeBlock *CodeBlock
 	var nowCodeBlock *CodeBlock
 	var beforeChar int32
 	var nowChar int32
 
-	floorCodeBlocks := make(map[int]*CodeBlock)
-	beforeFloor := 0
-	nowFloor := 0
+	var codeBlockIndentation CodeBlockIndentation
 
-	nowPos := TxtCodeWordPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1}
+	//beforeFloor := 0
+	//nowFloor := 0
+
+	nowPos := CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1}
 	for n, r := range txtCode {
 		nowChar = r
 		nowPos.StartNo = n
 		nowPos.BlockLen = len(string(r))
 
-		var t TxtCodeRuneType
-		switch r {
-		case '“':
-			t = TCRY_LeftQuotation
-		case '”':
-			t = TCRY_RightQuotation
-		case '#':
-			t = TCRY_StartNote
-		case ' ', '　':
-			t = TCRY_Space
-		case '\n', '\r':
-			t = TCRY_EndLine
-		case '(', '（':
-			t = TCRY_LeftBracket
-		case ')', '）':
-			t = TCRY_RightBracket
-		case '\t':
-			t = TCRY_Tab
-		case ':', '：':
-			t = TCRY_Colon
-		case '、':
-			t = TCRY_DH
-		case ',', '，':
-			t = TCRY_Comma
-		case '。':
-			t = TCRY_Period
-		case ';', '；':
-			t = TCRY_Semicolon
-		case '=', '+', '-', '*', '/', '<', '>', '!':
-			t = TCRY_Operator
-			//t = TCRY_Mark
-		default:
-			t = TCRY_Other
-		}
-		nowCodeBlock = newCodeBlock(txtCode, nowPos, t)
+		t := getRuneCodeBlockType(r)
+
+		nowCodeBlock = newCodeBlockPointer(txtCode, nowPos, t)
 		if n == 0 {
-			lineCodeBlock = newLineCodeBlock(nowPos)
-			addItemCodeBlock(mainCodeBlock, lineCodeBlock)
-			addItemCodeBlock(lineCodeBlock, nowCodeBlock)
+
+			codeBlockIndentation = newCodeBlockIndentation(mainCodeBlock, nowCodeBlock)
 			beforeCodeBlock = nowCodeBlock
-			floorCodeBlocks[nowFloor] = lineCodeBlock
-			beforeFloor = nowFloor
+
+			//codeBlockIndentation[nowFloor] = lineCodeBlock
+			//beforeFloor = nowFloor
 		} else {
-			switch beforeCodeBlock.Type {
-			case TCRY_LeftQuotation:
-				if t != TCRY_RightQuotation {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+			switch beforeCodeBlock.BlockType {
+			case CbtLeftQuotation:
+				if t != CbtRightQuotation {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+
 				} else {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
-					beforeCodeBlock.Type = TCRY_String
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+					beforeCodeBlock.BlockType = CbtString
 				}
-			case TCRY_StartNote:
-				if t != TCRY_EndLine {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+			case CbtPound:
+				if t != CbtEnter {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 				} else {
-					beforeCodeBlock.Type = TCRY_Note
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+					beforeCodeBlock.BlockType = CbtComment
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				}
-			case TCRY_EndLine:
-				if t == TCRY_EndLine {
+			case CbtEnter:
+				if t == CbtEnter {
 					if beforeCodeBlock.Words == "\r" && nowCodeBlock.Words == "\n" {
-						codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+						beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 					} else {
-						beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+						beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 					}
-				} else if t == TCRY_Tab {
-					nowCodeBlock.Type = TCRY_NewLineTab
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+				} else if t == CbtTab {
+					nowCodeBlock.BlockType = CbtNewLineTab
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				} else {
-					nowFloor = 0
-					beforeCodeBlock = appendNewLineCodeBlock(beforeCodeBlock, nowCodeBlock, floorCodeBlocks, beforeFloor, nowFloor)
-					beforeFloor = nowFloor
+					beforeCodeBlock = codeBlockIndentation.appendNewLine(0, nowCodeBlock)
 				}
-			case TCRY_NewLineTab:
-				if t == TCRY_Tab {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
-				} else if t == TCRY_EndLine {
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+			case CbtNewLineTab:
+				if t == CbtTab {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else if t == CbtEnter {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				} else {
-					nowFloor = beforeCodeBlock.Pos.BlockLen
-					beforeCodeBlock = appendNewLineCodeBlock(beforeCodeBlock, nowCodeBlock, floorCodeBlocks, beforeFloor, nowFloor)
-					beforeFloor = nowFloor
+					beforeCodeBlock = codeBlockIndentation.appendNewLine(beforeCodeBlock.Pos.BlockLen, nowCodeBlock)
+					//nowFloor = beforeCodeBlock.Pos.BlockLen
+					//beforeCodeBlock = appendNewLineCodeBlock(beforeCodeBlock, nowCodeBlock, codeBlockIndentation, beforeFloor, nowFloor)
+					//beforeFloor = nowFloor
 				}
-			case TCRY_Space:
-				if t == TCRY_Space {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+			case CbtSpace:
+				if t == CbtSpace {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 				} else {
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				}
-			case TCRY_Tab:
-				if t == TCRY_Tab {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+			case CbtTab:
+				if t == CbtTab {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 				} else {
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				}
-			case TCRY_LeftBracket:
-				beforeCodeBlock = appendChildCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_RightBracket:
+			case CbtLeftBracket:
+				beforeCodeBlock = beforeCodeBlock.appendChild(nowCodeBlock)
+			case CbtRightBracket:
 				beforeCodeBlock = beforeCodeBlock.ParCodeBlock
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_Colon:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_Comma:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_DH:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_Semicolon:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_Period:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
-			case TCRY_Operator:
-				if t == TCRY_Operator {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtColon:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtComma:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtDunHao:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtSemicolon:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtPeriod:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtOperator:
+				if t == CbtOperator {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 				} else {
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				}
-			case TCRY_Other:
-				if t == TCRY_Other {
-					codeBlockAddBlockLen(beforeCodeBlock, nowPos.BlockLen)
+			case CbtOtherChar:
+				if t == CbtOtherChar {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
 				} else {
-					beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 				}
 			default:
-				beforeCodeBlock = appendCodeBlock(beforeCodeBlock, nowCodeBlock)
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
 			}
 		}
 		nowPos.ColNo = nowPos.ColNo + nowPos.BlockLen
@@ -309,14 +334,14 @@ func (txt *TxtCode) AnalyzeWordsStep1() (err error) {
 
 	var printCodeBlock func(block *CodeBlock, floor int)
 	printCodeBlock = func(block *CodeBlock, floor int) {
-		if block.Type == TCRY_Line {
+		if block.BlockType == CbtLine {
 			tab := strings.Repeat("\t", block.Pos.ColNo)
 			fmt.Print("\n")
 			fmt.Printf("%s行%d，列%d, %d  ", tab, block.Pos.LineNo,
-				block.Pos.ColNo, block.Type)
+				block.Pos.ColNo, block.BlockType)
 		}
-		switch block.Type {
-		case TCRY_Space, TCRY_Tab, TCRY_NewLineTab, TCRY_EndLine, TCRY_Line:
+		switch block.BlockType {
+		case CbtSpace, CbtTab, CbtNewLineTab, CbtEnter, CbtLine:
 		default:
 			fmt.Printf("<%s>", block.Words)
 
@@ -333,52 +358,92 @@ func (txt *TxtCode) AnalyzeWordsStep1() (err error) {
 			fmt.Print("]")
 
 		}
-		if block.Type == TCRY_Line {
+		if block.BlockType == CbtLine {
 			//fmt.Print("\n")
 		}
 
 	}
-	txt.MainCodeBlock = mainCodeBlock
 
 	return
-
 }
 
-func (txt *TxtCode) AnalyzeWords() (err error) {
-
-	err = txt.AnalyzeWordsStep1()
+func (code *TxtCode) AnalyzeWords() (err error) {
+	code.MainCodeBlock, err = getCodeBlockFromTxt(code.CodeTxt)
 	if err != nil {
 		return
 	}
+
 	return
 
 }
-func (txt *TxtCode) CodeBlockToString(block *CodeBlock) string {
+
+func XmlElementAddCodeBlock(parElement *etree.Element, codeBlock *CodeBlock) {
+
+	//doc.CreateProcInst("xml-stylesheet", `type="text/xsl" href="style.xsl"`)
+	name := ""
+	switch codeBlock.BlockType {
+	case CbtFile:
+		name = "程序"
+	case CbtLine:
+		name = "代码"
+	default:
+		name = "未知" + strconv.Itoa(int(codeBlock.BlockType))
+
+	}
+	element := parElement.CreateElement(name)
+	element.SetText(codeBlock.Words)
+	for _, c := range codeBlock.Items {
+		XmlElementAddCodeBlock(element, c)
+	}
+
+	return
+}
+func (code *TxtCode) ToXmlFile(path string) (err error) {
+
+	doc := etree.NewDocument()
+	doc.CreateProcInst("xml", `version="1.0" encoding="UTF-8"`)
+	element := doc.CreateElement("程序")
+	for _, codeBlock := range code.MainCodeBlock.Items {
+		XmlElementAddCodeBlock(element, codeBlock)
+	}
+
+	doc.Indent(2)
+	err = doc.WriteToFile(path)
+
+	if err != nil {
+		return
+	}
+
+	return
+
+}
+
+func CodeBlockToString(block *CodeBlock) string {
 
 	var words []string
 	var w string
-	switch block.Type {
-	case TCRY_Space, TCRY_Line:
+	switch block.BlockType {
+	case CbtSpace, CbtLine:
 
-	case TCRY_NewLineTab, TCRY_EndLine:
+	case CbtNewLineTab, CbtEnter:
 		w = block.Words
-	case TCRY_LeftBracket:
+	case CbtLeftBracket:
 		w = "（"
-	case TCRY_RightBracket:
+	case CbtRightBracket:
 		w = "）"
-	case TCRY_Colon:
+	case CbtColon:
 		w = "："
-	case TCRY_DH:
+	case CbtDunHao:
 		w = "、"
-	case TCRY_Comma:
+	case CbtComma:
 		w = "，"
-	case TCRY_Period:
+	case CbtPeriod:
 		w = "。"
-	case TCRY_Semicolon:
+	case CbtSemicolon:
 		w = "；"
 
 	default:
-		if block.NeedSpace {
+		if block.NeedTrailingSpace {
 			w = block.Words + " "
 		} else {
 			w = block.Words
@@ -388,21 +453,20 @@ func (txt *TxtCode) CodeBlockToString(block *CodeBlock) string {
 	words = append(words, w)
 
 	for _, item := range block.Items {
-		w = txt.CodeBlockToString(item)
+		w = CodeBlockToString(item)
 		words = append(words, w)
 	}
 	return strings.Join(words, "")
 
 }
 
-//保存内容到文件
-func (txt *TxtCode) formatToFile(path string) (err error) {
+func (code *TxtCode) formatToFile(path string) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return
 	}
 	defer f.Close()
-	data := txt.CodeBlockToString(txt.MainCodeBlock)
+	data := CodeBlockToString(code.MainCodeBlock)
 	_, err = f.Write([]byte(data))
 	if err != nil {
 		return
