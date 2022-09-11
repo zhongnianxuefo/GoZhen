@@ -1,6 +1,10 @@
 # 二进制文件
 *.exe
 
+# 二进制文件
+go_build_GoZhen
+go_build_GoZhen.exe
+
 # GoLand
 .idea/*
 

@@ -1,0 +1,1633 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"github.com/beevik/etree"
+	eastasianwidth "github.com/moznion/go-unicode-east-asian-width"
+	"os"
+	"strconv"
+	"strings"
+	"unicode"
+)
+
+type CodeBlockPos struct {
+	StartNo  int
+	BlockLen int
+
+	//EndNo   int
+
+	LineNo int
+	ColNo  int
+	Width  int
+}
+
+type CodeBlockType int
+
+const (
+	_ CodeBlockType = iota
+	CbtApostrophe
+	CbtLeftApostrophe
+	CbtRightApostrophe
+	CbtQuotation
+	CbtLeftQuotation
+	CbtRightQuotation
+	CbtLeftBracket
+	CbtRightBracket
+	CbtLeftSquareBracket
+	CbtRightSquareBracket
+	CbtLeftBigBracket
+	CbtRightBigBracket
+	CbtSpace
+	CbtFullWidthSpace
+	CbtTab
+	CbtPound
+	CbtCR
+	CbtLF
+	CbtCRLF
+	CbtEnter
+	CbtColon
+	CbtComma
+	CbtDunHao
+	CbtSemicolon
+	CbtPeriod
+	CBtBackslash
+
+	CbtOperator
+
+	CbtUnderscore
+	CbtLetter
+	CbtNumber
+	CbtPoint
+	CbtOtherChar
+
+	CbtFile
+	CbtLine
+	CbtChildLine
+
+	CbtString
+	CbtNewLineTab
+	CbtComment
+)
+
+//type CodeBlockChildType int
+//
+//const (
+//	_ CodeBlockChildType = iota
+//	CbctEqual
+//	CbctAssignment
+//	CbctAdd
+//	CbctSub
+//	CbctMul
+//	CbctDiv
+//	CbctGreater
+//	CbctLess
+//	CbctDoubleEqual
+//	CbctNotEqual
+//	CbctGreaterEqual
+//	CbctLessEqual
+//	CbctAnd
+//	CbctOr
+//	CbctNot
+//	CbctDoubleAnd
+//	CbctDoubleOr
+//)
+
+type CodeBlock struct {
+	AllTxtCode *[]rune
+	Pos        CodeBlockPos
+	BlockType  CodeBlockType
+	//BlockChildType CodeBlockChildType
+	LineIndent     int
+	TrailingSpace  bool
+	TrailingEnter  int
+	NextLineIndent int
+	Comment        string
+
+	Words        string
+	Items        []*CodeBlock
+	ParCodeBlock *CodeBlock
+	//Analyze      *TxtCodeAnalyze
+}
+type CodeBlockIndentation struct {
+	CodeBlocks map[int]*CodeBlock
+	Floor      int
+}
+
+type TxtCodeAnalyze struct {
+	CodeTxt []rune
+
+	MainCode *CodeBlock
+
+	ParCodes     map[int]*CodeBlock
+	NowPos       CodeBlockPos
+	NowCode      *CodeBlock
+	NewLine      bool
+	Nowrap       bool
+	BracketCount int
+	LastInd      int
+	NowInd       int
+	LastChar     rune
+}
+type TxtCode struct {
+	CodeTxt []rune
+
+	CodeBlock *CodeBlock
+}
+
+func (txt *TxtCode) getCodeWords(code *CodeBlock) (words string) {
+	s := code.Pos.StartNo
+	e := s + code.Pos.BlockLen
+	return string(txt.CodeTxt[s:e])
+}
+
+//func newCodeBlock(pos , t BlockType) (codeBlock *CodeBlock) {
+//	codeBlock = &CodeBlock{}
+//	codeBlock.Pos = CodeBlockPos{StartNo: 0, EndNo: 0, LineNo: 1, Width: 1}
+//	codeBlock.BlockType = t
+//
+//	codeBlock.ParCodeBlock = codeBlock
+//	return
+//}
+func NewTxtCodeAnalyze(CodeTxt []rune) (analyze *TxtCodeAnalyze) {
+	analyze = &TxtCodeAnalyze{}
+	analyze.CodeTxt = CodeTxt
+	analyze.NowPos = CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1, Width: 0}
+
+	analyze.MainCode = newCodeBlock(analyze.NowPos, CbtFile)
+	analyze.MainCode.ParCodeBlock = analyze.MainCode
+
+	analyze.NowCode = analyze.MainCode
+
+	analyze.ParCodes = make(map[int]*CodeBlock)
+	analyze.ParCodes[-1] = analyze.MainCode
+	analyze.LastInd = -1
+	analyze.NowInd = 0
+
+	analyze.NewLine = true
+	analyze.BracketCount = 0
+	analyze.Nowrap = false
+	analyze.LastChar = 0
+	return
+}
+func (analyze *TxtCodeAnalyze) newCodeBlock(pos CodeBlockPos, codeBlockType CodeBlockType) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.AllTxtCode = &analyze.CodeTxt
+	codeBlock.Pos = pos
+	codeBlock.BlockType = codeBlockType
+
+	return
+}
+func newCodeBlock(pos CodeBlockPos, codeBlockType CodeBlockType) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = codeBlockType
+
+	return
+}
+
+//func newCodeBlockWithChildType(pos CodeBlockPos, codeBlockType CodeBlockType, childType CodeBlockChildType) (codeBlock *CodeBlock) {
+//	codeBlock = &CodeBlock{}
+//	codeBlock.Pos = pos
+//	codeBlock.BlockType = codeBlockType
+//	codeBlock.BlockChildType = childType
+//
+//	return
+//}
+func (analyze *TxtCodeAnalyze) getCodeWord(s int, l int) (txt string) {
+	e := s + l
+	return string(analyze.CodeTxt[s:e])
+}
+func (analyze *TxtCodeAnalyze) appendNext(codeBlock *CodeBlock) {
+	analyze.NowCode.ParCodeBlock.addItem(codeBlock)
+	analyze.NowCode = codeBlock
+}
+func (analyze *TxtCodeAnalyze) appendLine() (err error) {
+	lineCode := newCodeBlock(analyze.NowPos, CbtLine)
+	if analyze.LastInd < analyze.NowInd {
+
+		analyze.NowCode = analyze.ParCodes[analyze.LastInd]
+		analyze.appendChild(lineCode)
+		analyze.ParCodes[analyze.NowInd] = lineCode
+		//analyze.NowCode = lineCode
+	} else {
+		//fmt.Println("NowInd", Indentation, pos)
+		analyze.NowCode = analyze.ParCodes[analyze.NowInd].ParCodeBlock
+		analyze.appendChild(lineCode)
+	}
+	analyze.LastInd = analyze.NowInd
+	//if !ok {
+	//	lineCode = newCodeBlock(pos, CbtLine)
+	//	analyze.NowCode.addItem(lineCode)
+	//}
+	//
+	//analyze.ParCodes[NowInd] = lineCode
+	//analyze.NowCode.addItem(codeBlock)
+	analyze.NowCode = lineCode
+	return
+}
+func (analyze *TxtCodeAnalyze) appendChild(codeBlock *CodeBlock) {
+	analyze.NowCode.addItem(codeBlock)
+	analyze.NewLine = false
+	analyze.NowCode = codeBlock
+}
+
+//func (analyze *TxtCodeAnalyze) appendCodeBlock(codeBlock *CodeBlock) (codeBlockIndentation CodeBlockIndentation) {
+//
+//	lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+//	analyze.MainCode.addItem(lineCodeBlock)
+//	lineCodeBlock.addItem(codeBlock)
+//	analyze.ParCodes = make(map[int]*CodeBlock)
+//	analyze.ParCodes[0] = lineCodeBlock
+//	analyze.NowCode = analyze.MainCode
+//	return
+//}
+func (analyze *TxtCodeAnalyze) EndRune() {
+	switch analyze.NowCode.BlockType {
+
+	case CbtPound:
+
+		analyze.NowCode.BlockType = CbtComment
+
+	}
+}
+func (analyze *TxtCodeAnalyze) SetPosCol(char rune) {
+	charType := getRuneCodeBlockType(char)
+
+	if analyze.LastChar == '\r' && char == '\n' {
+		analyze.NowPos.ColNo = 1
+		//analyze.NowPos.Width = 1
+	} else if char == '\r' || char == '\n' {
+		analyze.NowPos.LineNo += 1
+		analyze.NowPos.ColNo = 1
+		//analyze.NowPos.Width = 1
+	} else if charType == CbtSpace {
+		//analyze.NowPos.Width += 1
+		analyze.NowPos.ColNo += 1
+	} else if charType == CbtFullWidthSpace {
+		//analyze.NowPos.Width += 2
+		analyze.NowPos.ColNo += 1
+	} else if charType == CbtTab {
+		//analyze.NowPos.Width += 4
+		analyze.NowPos.ColNo += 1
+
+	} else if eastasianwidth.IsFullwidth(char) {
+		//analyze.NowPos.Width += 2
+		analyze.NowPos.ColNo += 1
+	} else {
+		//analyze.NowPos.Width += 1
+		analyze.NowPos.ColNo += 1
+	}
+
+	analyze.LastChar = char
+}
+func (analyze *TxtCodeAnalyze) CheckNewLine(nowCodeBlock *CodeBlock) (check bool) {
+
+	if analyze.NewLine {
+		switch nowCodeBlock.BlockType {
+		case CbtLeftApostrophe, CbtLeftQuotation:
+			analyze.NewLine = false
+		default:
+			if analyze.BracketCount > 0 {
+				analyze.NewLine = false
+			} else if analyze.Nowrap == true {
+				analyze.Nowrap = false
+				analyze.NewLine = false
+			} else {
+				lineCodeBlock := newCodeBlock(nowCodeBlock.Pos, CbtLine)
+				analyze.NowCode = analyze.MainCode
+				analyze.appendChild(lineCodeBlock)
+				analyze.appendChild(nowCodeBlock)
+				check = true
+			}
+		}
+
+		//switch nowCodeBlock.BlockType {
+		//case CbtSpace, CbtLF:
+		//	analyze.NowCode.BlockType = CbtComment
+		//	analyze.appendNext(nowCodeBlock)
+		//default:
+		//	analyze.NowCode.addLen(1)
+		//}
+
+	}
+	return
+
+}
+func (analyze *TxtCodeAnalyze) CheckComment(nowCodeBlock *CodeBlock) (check bool) {
+	if analyze.NowCode.BlockType == CbtPound {
+		switch nowCodeBlock.BlockType {
+		case CbtCR, CbtLF:
+			analyze.NowCode.BlockType = CbtComment
+			analyze.appendNext(nowCodeBlock)
+		default:
+			analyze.NowCode.addLen(1)
+		}
+		check = true
+	}
+	return
+
+}
+func (analyze *TxtCodeAnalyze) CheckEnter(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CbtCR:
+		switch nowCodeBlock.BlockType {
+		case CbtLF:
+			analyze.NowCode.BlockType = CbtCRLF
+			analyze.NowCode.addLen(1)
+			analyze.NewLine = true
+		default:
+			analyze.appendNext(nowCodeBlock)
+
+		}
+		check = true
+	case CbtLF:
+		analyze.appendNext(nowCodeBlock)
+		analyze.NewLine = true
+		check = true
+	}
+	return
+
+}
+
+func (analyze *TxtCodeAnalyze) CheckLetter(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+
+	case CbtUnderscore, CbtLetter:
+		switch nowCodeBlock.BlockType {
+		case CbtUnderscore, CbtLetter, CbtNumber:
+			analyze.NowCode.addLen(1)
+		default:
+			analyze.appendNext(nowCodeBlock)
+		}
+		check = true
+	}
+	return
+}
+
+func (analyze *TxtCodeAnalyze) CheckNumber(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+
+	case CbtNumber:
+		switch nowCodeBlock.BlockType {
+		case CbtNumber, CbtPoint, CbtLetter:
+			analyze.NowCode.addLen(1)
+		default:
+			analyze.appendNext(nowCodeBlock)
+		}
+		check = true
+	}
+	return
+}
+
+func (analyze *TxtCodeAnalyze) CheckNowrap(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CBtBackslash:
+		analyze.Nowrap = true
+		analyze.appendNext(nowCodeBlock)
+		check = true
+	}
+	if analyze.Nowrap == true {
+		switch analyze.NowCode.BlockType {
+		case CbtSpace, CbtFullWidthSpace, CbtTab:
+			analyze.Nowrap = true
+		case CbtLF, CbtCR, CbtCRLF, CbtEnter:
+			analyze.NowCode.BlockType = CbtEnter
+			analyze.Nowrap = true
+		default:
+			analyze.Nowrap = false
+		}
+
+	}
+	return
+}
+func (codeBlock *CodeBlock) getWords() string {
+
+	s := codeBlock.Pos.StartNo
+	e := s + codeBlock.Pos.BlockLen
+	allCodeTxt := *codeBlock.AllTxtCode
+	return string(allCodeTxt[s:e])
+}
+func (codeBlock *CodeBlock) CheckEqual() {
+	oldItems := codeBlock.Items
+	codeBlock.Items = []*CodeBlock{}
+	nowCode := codeBlock
+	for n, c := range oldItems {
+		if n == 0 {
+			nowCode.addItem(c)
+		} else {
+			words := nowCode.getWords()
+			if words == "=" || words == "+=" || words == "-=" || words == "*=" || words == "/=" {
+				nowCode.addItem(c)
+			} else {
+				nowCode.ParCodeBlock.addItem(c)
+			}
+
+		}
+
+		nowCode = c
+	}
+}
+func (codeBlock *CodeBlock) CheckColon() {
+	oldItems := codeBlock.Items
+	codeBlock.Items = []*CodeBlock{}
+	nowCode := codeBlock
+	for n, c := range oldItems {
+		if n == 0 {
+			nowCode.addItem(c)
+		} else {
+			if nowCode.BlockType == CbtColon {
+				nowCode.addItem(c)
+			} else {
+				nowCode.ParCodeBlock.addItem(c)
+			}
+
+		}
+
+		nowCode = c
+	}
+}
+func (codeBlock *CodeBlock) SeparatorChildLine(separator CodeBlockType) {
+	oldItems := codeBlock.Items
+	codeBlock.Items = []*CodeBlock{}
+	codeGroup := newCodeBlock(codeBlock.Pos, CbtChildLine)
+	codeBlock.addItem(codeGroup)
+	for _, c := range oldItems {
+		codeGroup.addItem(c)
+		if c.BlockType == separator {
+			codeGroup = newCodeBlock(codeBlock.Pos, CbtChildLine)
+			codeBlock.addItem(codeGroup)
+		}
+	}
+}
+func (codeBlock *CodeBlock) getIndent() (indent int) {
+	indent = 0
+	for _, c := range codeBlock.Items {
+		switch c.BlockType {
+		case CbtSpace:
+			indent += 1
+		case CbtFullWidthSpace:
+			indent += 2
+		case CbtTab:
+			indent += 4
+		case CbtChildLine:
+			indent += c.getIndent()
+			return
+		default:
+			return
+		}
+	}
+
+	return
+}
+func (codeBlock *CodeBlock) GetNextLineIndent() (indent int) {
+	switch codeBlock.ParCodeBlock.BlockType {
+
+	case CbtLine, CbtFile:
+		indent = 0
+	case CbtOperator:
+		indent = codeBlock.ParCodeBlock.Pos.Width
+	case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+		indent = codeBlock.ParCodeBlock.Pos.Width
+	default:
+		codeBlock.ParCodeBlock.GetNextLineIndent()
+	}
+
+	return
+}
+func (codeBlock *CodeBlock) ClearSpaceAndEnter() {
+
+	oldItems := codeBlock.Items
+	codeBlock.Items = []*CodeBlock{}
+
+	var beforeCode *CodeBlock
+	beforeCode = codeBlock
+	for _, c := range oldItems {
+
+		switch c.BlockType {
+		case CbtEnter:
+			beforeCode.TrailingEnter += 1
+			beforeCode.NextLineIndent = beforeCode.GetNextLineIndent()
+		case CbtCR, CbtLF, CbtCRLF:
+		case CbtSpace, CbtFullWidthSpace, CbtTab:
+		case CbtComment:
+			beforeCode.Comment = c.getWords()
+		default:
+			codeBlock.addItem(c)
+			beforeCode = c
+		}
+	}
+	beforeCode = codeBlock
+
+	for _, c := range codeBlock.Items {
+		c.ClearSpaceAndEnter()
+	}
+
+	for _, c := range codeBlock.Items {
+		beforeCode.TrailingSpace = needTrailingSpace(beforeCode.BlockType, c.BlockType)
+		beforeCode = c
+	}
+}
+func (codeBlock *CodeBlock) CheckLineIndent() (err error) {
+	oldItems := codeBlock.Items
+	codeBlock.Items = []*CodeBlock{}
+
+	codeBlockIndents := make(map[int]*CodeBlock)
+	var beforeLine *CodeBlock
+	for n, c := range oldItems {
+		c.LineIndent = c.getIndent()
+		if n == 0 {
+			codeBlock.addItem(c)
+			codeBlockIndents[c.LineIndent] = c
+		} else {
+			if beforeLine.LineIndent < c.LineIndent {
+				codeBlockIndents[beforeLine.LineIndent].addItem(c)
+				codeBlockIndents[c.LineIndent] = c
+
+			} else {
+				_, ok := codeBlockIndents[c.LineIndent]
+				if !ok {
+					err := fmt.Sprintf("代码缩进错误 %d，%d", c.Pos.LineNo, c.Pos.ColNo)
+					return errors.New(err)
+				}
+				codeBlockIndents[c.LineIndent].appendNext(c)
+				codeBlockIndents[c.LineIndent] = c
+			}
+			//lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+			//if floor > codeBlockLines.Floor {
+			//	codeBlockLines.CodeBlocks[codeBlockLines.Floor].addItem(lineCodeBlock)
+			//	codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+			//	lineCodeBlock.addItem(codeBlock)
+			//} else {
+			//	codeBlockLines.CodeBlocks[floor].ParCodeBlock.addItem(lineCodeBlock)
+			//	codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+			//	lineCodeBlock.addItem(codeBlock)
+			//}
+		}
+		beforeLine = c
+
+	}
+	return
+}
+func (codeBlock *CodeBlock) CheckChildLine(separator CodeBlockType) (check bool) {
+	hasSeparator := false
+	for _, c := range codeBlock.Items {
+		enableCode := false
+		switch c.BlockType {
+		case separator:
+			hasSeparator = true
+		case CbtLetter, CbtNumber, CbtOperator, CbtString:
+			enableCode = true
+		case CbtApostrophe,
+			CbtLeftApostrophe,
+			CbtRightApostrophe,
+			CbtQuotation,
+			CbtLeftQuotation,
+			CbtRightQuotation,
+			CbtLeftBracket,
+			CbtRightBracket,
+			CbtLeftSquareBracket,
+			CbtRightSquareBracket,
+			CbtLeftBigBracket,
+			CbtRightBigBracket:
+			enableCode = true
+		}
+		if hasSeparator && enableCode {
+			check = true
+			return
+		}
+	}
+	return
+}
+func (analyze *TxtCodeAnalyze) CheckItemsGroup(codeBlock *CodeBlock) {
+
+	if codeBlock.CheckChildLine(CbtPeriod) {
+		codeBlock.SeparatorChildLine(CbtPeriod)
+	}
+	if codeBlock.CheckChildLine(CbtSemicolon) {
+		codeBlock.SeparatorChildLine(CbtSemicolon)
+	}
+	if codeBlock.CheckChildLine(CbtColon) {
+		codeBlock.CheckColon()
+	}
+
+	if codeBlock.CheckChildLine(CbtComma) {
+		codeBlock.SeparatorChildLine(CbtComma)
+	}
+	if codeBlock.CheckChildLine(CbtDunHao) {
+		codeBlock.SeparatorChildLine(CbtDunHao)
+	}
+	if codeBlock.CheckChildLine(CbtOperator) {
+		codeBlock.CheckEqual()
+	}
+
+	for _, c := range codeBlock.Items {
+		analyze.CheckItemsGroup(c)
+	}
+
+	return
+}
+func (analyze *TxtCodeAnalyze) CheckColon(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CbtColon:
+		analyze.appendChild(nowCodeBlock)
+
+		check = true
+	}
+	return
+
+}
+func (analyze *TxtCodeAnalyze) CheckBracket(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+		analyze.BracketCount += 1
+		analyze.appendChild(nowCodeBlock)
+		check = true
+	case CbtRightBracket, CbtRightSquareBracket, CbtRightBigBracket:
+		analyze.BracketCount -= 1
+		analyze.NowCode = analyze.NowCode.ParCodeBlock
+		analyze.appendNext(nowCodeBlock)
+		check = true
+	case CbtCR, CbtLF, CbtCRLF:
+		if analyze.BracketCount > 0 {
+			analyze.NowCode.BlockType = CbtEnter
+			analyze.appendNext(nowCodeBlock)
+			check = true
+		}
+	}
+
+	return
+
+}
+
+func (analyze *TxtCodeAnalyze) CheckOperator(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CbtOperator:
+		switch nowCodeBlock.BlockType {
+		case CbtOperator:
+			analyze.NowCode.addLen(1)
+
+		default:
+			analyze.appendNext(nowCodeBlock)
+		}
+		check = true
+	}
+	return
+
+}
+func (analyze *TxtCodeAnalyze) CheckString(nowCodeBlock *CodeBlock) (check bool) {
+	switch analyze.NowCode.BlockType {
+	case CbtLeftQuotation:
+		switch nowCodeBlock.BlockType {
+		case CbtRightQuotation:
+			analyze.NowCode.addLen(1)
+			analyze.NowCode.BlockType = CbtString
+		default:
+			analyze.NowCode.addLen(1)
+		}
+		check = true
+	case CbtLeftApostrophe:
+		switch nowCodeBlock.BlockType {
+		case CbtRightApostrophe:
+			analyze.NowCode.addLen(1)
+			analyze.NowCode.BlockType = CbtString
+		default:
+			analyze.NowCode.addLen(1)
+		}
+		check = true
+	case CbtApostrophe:
+		switch nowCodeBlock.BlockType {
+		case CbtApostrophe:
+			analyze.NowCode.addLen(1)
+			analyze.NowCode.BlockType = CbtString
+		case CbtCR, CbtLF:
+
+			analyze.NowCode.BlockType = CbtString
+			analyze.appendNext(nowCodeBlock)
+		default:
+			analyze.NowCode.addLen(1)
+		}
+		check = true
+	case CbtQuotation:
+		switch nowCodeBlock.BlockType {
+		case CbtQuotation:
+			analyze.NowCode.addLen(1)
+			analyze.NowCode.BlockType = CbtString
+		case CbtCR, CbtLF:
+			analyze.NowCode.BlockType = CbtString
+			analyze.appendNext(nowCodeBlock)
+		default:
+			analyze.NowCode.addLen(1)
+		}
+		check = true
+
+	}
+	return
+
+}
+func (analyze *TxtCodeAnalyze) AddRune(n int, char rune) {
+	charType := getRuneCodeBlockType(char)
+	if char == ' ' {
+		//fmt.Println(char)
+	}
+	//fmt.Println(n, string(char), char, charType)
+	analyze.NowPos.StartNo = n
+	analyze.NowPos.BlockLen = 1
+	nowCodeBlock := analyze.newCodeBlock(analyze.NowPos, charType)
+	check := false
+	if !check {
+		check = analyze.CheckNewLine(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckComment(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckString(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckEnter(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckBracket(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckOperator(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckLetter(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckNumber(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckNowrap(nowCodeBlock)
+	}
+
+	//if !check {
+	//	check = analyze.CheckColon(nowCodeBlock)
+	//}
+
+	if !check {
+		analyze.appendNext(nowCodeBlock)
+	}
+	//switch analyze.NowCode.BlockType {
+	//case CbtPound:
+	//	switch nowCodeBlock.BlockType {
+	//	case CbtCR, CbtLF:
+	//		analyze.NowCode.BlockType = CbtComment
+	//	default:
+	//		analyze.NowCode.addLen(1)
+	//	}
+	//
+	//default:
+	//
+	//}
+
+	//if analyze.NewLine {
+	//	switch charType {
+	//	case CbtSpace:
+	//		if analyze.NewLine {
+	//			analyze.NowInd += 1
+	//		}
+	//	case CbtFullWidthSpace:
+	//		if analyze.NewLine {
+	//			analyze.NowInd += 2
+	//		}
+	//	case CbtTab:
+	//		if analyze.NewLine {
+	//			analyze.NowInd += 4
+	//		}
+	//	case CbtCR, CbtLF:
+	//		//analyze.LastChar=0
+	//		//analyze.NewLine = true
+	//	default:
+	//		analyze.appendLine()
+	//		analyze.appendChild(nowCodeBlock)
+	//	}
+	//} else {
+	//	if char == ' ' {
+	//		//fmt.Println(char)
+	//	}
+	//	switch analyze.NowCode.BlockType {
+	//	case CbtLeftQuotation:
+	//		if charType != CbtRightQuotation {
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//
+	//		} else {
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//			analyze.NowCode.BlockType = CbtString
+	//		}
+	//	case CbtPound:
+	//		switch charType {
+	//		case CbtCR, CbtLF:
+	//			analyze.NowCode.BlockType = CbtComment
+	//			//analyze.NowCode = nowCodeBlock
+	//			analyze.NewLine = true
+	//			analyze.NowInd = 0
+	//			analyze.appendNext(nowCodeBlock)
+	//		default:
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//		}
+	//
+	//	case CbtCR, CbtLF:
+	//		analyze.NewLine = true
+	//		analyze.NowInd = 0
+	//
+	//		switch charType {
+	//		case CbtCR, CbtLF:
+	//			if analyze.NowCode.BlockType == CbtCR && nowCodeBlock.BlockType == CbtLF {
+	//				analyze.NowCode.Pos.BlockLen += 1
+	//				analyze.NowCode.BlockType = nowCodeBlock.BlockType
+	//			} else {
+	//				analyze.appendNext(nowCodeBlock)
+	//			}
+	//
+	//			//if beforeCodeBlock.Words == "\char" && nowCodeBlock.Words == "\n" {
+	//			//	beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+	//			//} else {
+	//			//	beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+	//			//}
+	//		case CbtTab:
+	//			//nowCodeBlock.BlockType = CbtNewLineTab
+	//			//beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+	//
+	//			//beforeCodeBlock = codeBlockIndentation.appendNewLine(0, nowCodeBlock)
+	//
+	//		default:
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//		}
+	//
+	//	case CbtSpace, CbtTab:
+	//		switch charType {
+	//		case CbtSpace, CbtTab:
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//		default:
+	//			analyze.appendNext(nowCodeBlock)
+	//		}
+	//
+	//		//if charType == CbtTab {
+	//		//	beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+	//		//} else {
+	//		//	beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+	//		//}
+	//	case CbtLeftBracket:
+	//		analyze.appendChild(nowCodeBlock)
+	//		//beforeCodeBlock = beforeCodeBlock.appendChild(nowCodeBlock)
+	//	case CbtRightBracket:
+	//		analyze.NowCode = analyze.NowCode.ParCodeBlock
+	//		analyze.appendChild(nowCodeBlock)
+	//	case CbtColon:
+	//		analyze.appendNext(nowCodeBlock)
+	//	case CbtComma:
+	//		analyze.appendNext(nowCodeBlock)
+	//	case CbtDunHao:
+	//		analyze.appendNext(nowCodeBlock)
+	//	case CbtSemicolon:
+	//		analyze.appendNext(nowCodeBlock)
+	//	case CbtPeriod:
+	//		analyze.appendNext(nowCodeBlock)
+	//	case CbtOperator:
+	//		if charType == CbtOperator {
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//		} else {
+	//			analyze.appendNext(nowCodeBlock)
+	//		}
+	//	case CbtOtherChar:
+	//		if charType == CbtOtherChar {
+	//			analyze.NowCode.Pos.BlockLen += 1
+	//		} else {
+	//			analyze.appendNext(nowCodeBlock)
+	//		}
+	//	default:
+	//		analyze.appendNext(nowCodeBlock)
+	//	}
+	//
+	//	//case CbtCR, CbtLF:
+	//	//	analyze.NewLine = true
+	//
+	//}
+
+	//if analyze.NowPos.StartNo == 0 {
+	//	newCodeBlockIndentation(mainCodeBlock, nowCodeBlock)
+	//	analyze.NowCode = nowCodeBlock
+	//}
+
+	//if analyze.LastChar == '\n' && char == '\r' {
+	//
+	//} else if char == '\n' || char == '\r' {
+	//	analyze.NowPos.LineNo += 1
+	//	analyze.NowPos.Width = 1
+	//} else if charType == CbtSpace {
+	//	analyze.NowPos.Width += 1
+	//} else if charType == CbtFullWidthSpace {
+	//	analyze.NowPos.Width += 2
+	//} else if charType == CbtTab {
+	//	analyze.NowPos.Width += 4
+	//
+	//} else if eastasianwidth.IsFullwidth(char) {
+	//	analyze.NowPos.Width += 2
+	//} else {
+	//	analyze.NowPos.Width += 1
+	//}
+	//analyze.LastChar = char
+
+}
+func (code *TxtCode) AnalyzeTxtCode() (err error) {
+	Analyze := NewTxtCodeAnalyze(code.CodeTxt)
+	//var lineCodeBlock *NowCode
+	//var beforeCodeBlock *NowCode
+	//var nowCodeBlock *NowCode
+	//var beforeChar int32
+	//var nowChar int32
+	//
+	//var codeBlockIndentation CodeBlockIndentation
+
+	//beforeFloor := 0
+	//nowFloor := 0
+
+	for n, r := range code.CodeTxt {
+		//utf8.RuneCountInString
+
+		Analyze.AddRune(n, r)
+		Analyze.SetPosCol(r)
+
+	}
+	Analyze.EndRune()
+
+	Analyze.CheckItemsGroup(Analyze.MainCode)
+	Analyze.MainCode.ClearSpaceAndEnter()
+	err = Analyze.MainCode.CheckLineIndent()
+	if err != nil {
+		return
+	}
+
+	//.CheckLineIndent
+	code.CodeBlock = Analyze.MainCode
+	return
+}
+func newTxtCode2(codes string) (txtCode TxtCode, err error) {
+	txtCode.CodeTxt = []rune(codes)
+	err = txtCode.AnalyzeTxtCode()
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func getRuneCodeBlockType(r rune) (t CodeBlockType) {
+
+	switch r {
+	case '\'':
+		t = CbtApostrophe
+	case '‘':
+		t = CbtLeftApostrophe
+	case '’':
+		t = CbtRightApostrophe
+	case '"':
+		t = CbtQuotation
+	case '“':
+		t = CbtLeftQuotation
+	case '”':
+		t = CbtRightQuotation
+	case '#':
+		t = CbtPound
+	case ' ':
+		t = CbtSpace
+	case '　':
+		t = CbtFullWidthSpace
+	case '\r':
+		t = CbtCR
+	case '\n':
+		t = CbtLF
+
+	case '(', '（':
+		t = CbtLeftBracket
+	case ')', '）':
+		t = CbtRightBracket
+	case '[':
+		t = CbtLeftSquareBracket
+	case ']':
+		t = CbtRightSquareBracket
+	case '{':
+		t = CbtLeftBigBracket
+	case '}':
+		t = CbtRightBigBracket
+	case '\t':
+		t = CbtTab
+	case ':', '：':
+		t = CbtColon
+	case '、':
+		t = CbtDunHao
+	case ',', '，':
+		t = CbtComma
+	case '。':
+		t = CbtPeriod
+	case ';', '；':
+		t = CbtSemicolon
+	case '\\':
+		t = CBtBackslash
+	case '=':
+		t = CbtOperator
+
+	case '+':
+		t = CbtOperator
+
+	case '-':
+		t = CbtOperator
+
+	case '*':
+		t = CbtOperator
+
+	case '/':
+		t = CbtOperator
+
+	case '>':
+		t = CbtOperator
+
+	case '<':
+		t = CbtOperator
+
+	case '&':
+		t = CbtOperator
+
+	case '|':
+		t = CbtOperator
+
+	case '!':
+		t = CbtOperator
+
+	//t = TCRY_Mark
+	case '_':
+		t = CbtUnderscore
+	case '.':
+		t = CbtPoint
+	default:
+		if unicode.IsLetter(r) {
+			t = CbtLetter
+		} else if unicode.IsNumber(r) {
+			t = CbtNumber
+		} else {
+			t = CbtOtherChar
+		}
+
+	}
+	return
+}
+
+func newCodeBlockPointer(txtCode string, pos CodeBlockPos, codeBlockType CodeBlockType) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = codeBlockType
+	codeBlock.Words = txtCode[pos.StartNo : pos.StartNo+pos.BlockLen]
+	return
+}
+
+func newLineCodeBlock(pos CodeBlockPos) (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = CbtLine
+	codeBlock.Words = ""
+	return
+}
+
+func needTrailingSpace(t1 CodeBlockType, t2 CodeBlockType) (space bool) {
+	switch t1 {
+	case CbtFile, CbtLine, CbtChildLine, CbtNewLineTab, CbtEnter, CbtLF, CbtCR, CbtTab, CbtSpace, CbtFullWidthSpace:
+		space = false
+	case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+		space = false
+	case CbtRightBracket, CbtRightSquareBracket, CbtRightBigBracket:
+		space = false
+	case CbtColon, CbtComma, CbtDunHao, CbtSemicolon, CbtPeriod, CbtPoint:
+		space = false
+	default:
+		switch t2 {
+		case CbtFile, CbtLine, CbtChildLine, CbtNewLineTab, CbtEnter, CbtLF, CbtCR, CbtTab, CbtSpace, CbtFullWidthSpace:
+			space = false
+		case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+			space = false
+		case CbtRightBracket, CbtRightSquareBracket, CbtRightBigBracket:
+			space = false
+		case CbtColon, CbtComma, CbtDunHao, CbtSemicolon, CbtPeriod, CbtPoint:
+			space = false
+		default:
+			space = true
+		}
+	}
+	return
+}
+
+func needTrailingEnter(t1 CodeBlockType, t2 CodeBlockType) (enter bool) {
+	switch t2 {
+	case CbtEnter:
+		enter = true
+	}
+	return
+}
+func (codeBlock *CodeBlock) addLen(addBlockLen int) {
+
+	codeBlock.Pos.BlockLen += addBlockLen
+	//startNo := codeBlock.Pos.StartNo
+	//endNo := codeBlock.Pos.StartNo + codeBlock.Pos.BlockLen
+	//codeBlock.Words = txtCode[startNo:endNo]
+}
+
+//
+//func (codeBlock *CodeBlock) addLen(char rune, charType CodeBlockType, addBlockLen int) {
+//	switch charType {
+//	case CbtSpace:
+//		codeBlock.Pos.Width += 1
+//	case CbtFullWidthSpace:
+//		codeBlock.Pos.Width += 2
+//	case CbtTab:
+//		codeBlock.Pos.Width += 4
+//	case CbtFile, CbtLine, CbtChildLine, CbtCR, CbtLF, CbtCRLF, CbtEnter:
+//	default:
+//		if eastasianwidth.IsFullwidth(char) {
+//			codeBlock.Pos.Width += 2
+//		} else {
+//			codeBlock.Pos.Width += 2
+//		}
+//
+//	}
+//
+//	codeBlock.Pos.BlockLen += addBlockLen
+//	//startNo := codeBlock.Pos.StartNo
+//	//endNo := codeBlock.Pos.StartNo + codeBlock.Pos.BlockLen
+//	//codeBlock.Words = txtCode[startNo:endNo]
+//}
+
+func (codeBlock *CodeBlock) addBlockLen(txtCode string, addBlockLen int) {
+	codeBlock.Pos.BlockLen += addBlockLen
+	startNo := codeBlock.Pos.StartNo
+	endNo := codeBlock.Pos.StartNo + codeBlock.Pos.BlockLen
+	codeBlock.Words = txtCode[startNo:endNo]
+}
+
+func (codeBlock *CodeBlock) addItem(item *CodeBlock) {
+	//replaceLast := false
+	//itemsLen := len(codeBlock.Items)
+	//if itemsLen > 0 {
+	//	lastItems := codeBlock.Items[itemsLen-1]
+	//	switch lastItems.BlockType {
+	//	case CbtSpace, CbtTab, CbtNewLineTab:
+	//		replaceLast = true
+	//	case CbtComment:
+	//		if itemsLen > 1 {
+	//			codeBlock.Items[itemsLen-2].Comment = codeBlock.Items[itemsLen-1].Words
+	//		} else {
+	//			codeBlock.ParCodeBlock.Comment = codeBlock.Items[itemsLen-1].Words
+	//		}
+	//		replaceLast = true
+	//	}
+	//}
+	//if replaceLast {
+	//	codeBlock.Items[itemsLen-1] = item
+	//} else {
+	//	codeBlock.Items = append(codeBlock.Items, item)
+	//}
+	//
+	////TrailingEnter
+	//
+	//itemsLen = len(codeBlock.Items)
+	//if itemsLen > 1 {
+	//	c1 := codeBlock.Items[itemsLen-2]
+	//	c2 := codeBlock.Items[itemsLen-1]
+	//	c1.TrailingSpace = needTrailingSpace(c1.BlockType, c2.BlockType)
+	//	c1.TrailingEnter = needTrailingEnter(c1.BlockType, c2.BlockType)
+	//
+	//}
+	codeBlock.Items = append(codeBlock.Items, item)
+	item.ParCodeBlock = codeBlock
+}
+
+func (codeBlock *CodeBlock) appendNext(nextCodeBlock *CodeBlock) *CodeBlock {
+
+	codeBlock.TrailingSpace = needTrailingSpace(codeBlock.BlockType, nextCodeBlock.BlockType)
+	codeBlock.ParCodeBlock.addItem(nextCodeBlock)
+
+	return nextCodeBlock
+}
+
+func (codeBlock *CodeBlock) appendChild(child *CodeBlock) *CodeBlock {
+	codeBlock.addItem(child)
+	return child
+}
+
+func newCodeBlockIndentation(mainCodeBlock *CodeBlock, codeBlock *CodeBlock) (codeBlockIndentation CodeBlockIndentation) {
+
+	lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+	mainCodeBlock.addItem(lineCodeBlock)
+	lineCodeBlock.addItem(codeBlock)
+	codeBlockIndentation.CodeBlocks = make(map[int]*CodeBlock)
+	codeBlockIndentation.CodeBlocks[0] = lineCodeBlock
+
+	return
+}
+func (codeBlockLines *CodeBlockIndentation) appendNewLine(floor int, codeBlock *CodeBlock) *CodeBlock {
+	lineCodeBlock := newLineCodeBlock(codeBlock.Pos)
+	if floor > codeBlockLines.Floor {
+		codeBlockLines.CodeBlocks[codeBlockLines.Floor].addItem(lineCodeBlock)
+		codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+		lineCodeBlock.addItem(codeBlock)
+	} else {
+		codeBlockLines.CodeBlocks[floor].ParCodeBlock.addItem(lineCodeBlock)
+		codeBlockLines.CodeBlocks[floor] = lineCodeBlock
+		lineCodeBlock.addItem(codeBlock)
+	}
+	return codeBlock
+}
+
+func newTxtCode(codes string) (txtCode TxtCode, err error) {
+	txtCode.CodeTxt = []rune(codes) //strings.ReplaceAll(codes, "\r\n", "\n")
+	err = txtCode.AnalyzeWords()
+	if err != nil {
+		return
+	}
+
+	return
+}
+func newFileCodeBlock() (codeBlock *CodeBlock) {
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, Width: 1}
+	codeBlock.BlockType = CbtFile
+	codeBlock.Words = ""
+	codeBlock.ParCodeBlock = codeBlock
+	return
+}
+func getCodeBlockFromTxt(txtCode string) (mainCodeBlock *CodeBlock, err error) {
+
+	mainCodeBlock = newFileCodeBlock()
+
+	//var lineCodeBlock *NowCode
+	var beforeCodeBlock *CodeBlock
+	var nowCodeBlock *CodeBlock
+	var beforeChar int32
+	var nowChar int32
+
+	var codeBlockIndentation CodeBlockIndentation
+
+	//beforeFloor := 0
+	//nowFloor := 0
+
+	nowPos := CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, Width: 1}
+	for n, r := range txtCode {
+		nowChar = r
+		nowPos.StartNo = n
+		nowPos.BlockLen = len(string(r))
+
+		t := getRuneCodeBlockType(r)
+
+		nowCodeBlock = newCodeBlockPointer(txtCode, nowPos, t)
+		if n == 0 {
+
+			codeBlockIndentation = newCodeBlockIndentation(mainCodeBlock, nowCodeBlock)
+			beforeCodeBlock = nowCodeBlock
+
+			//codeBlockIndentation[nowFloor] = lineCodeBlock
+			//beforeFloor = nowFloor
+		} else {
+			switch beforeCodeBlock.BlockType {
+			case CbtLeftQuotation:
+				if t != CbtRightQuotation {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+
+				} else {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+					beforeCodeBlock.BlockType = CbtString
+				}
+			case CbtPound:
+				if t != CbtEnter {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock.BlockType = CbtComment
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				}
+			case CbtEnter:
+				if t == CbtEnter {
+					if beforeCodeBlock.Words == "\r" && nowCodeBlock.Words == "\n" {
+						beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+					} else {
+						beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+					}
+				} else if t == CbtTab {
+					nowCodeBlock.BlockType = CbtNewLineTab
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				} else {
+					beforeCodeBlock = codeBlockIndentation.appendNewLine(0, nowCodeBlock)
+				}
+			case CbtNewLineTab:
+				if t == CbtTab {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else if t == CbtEnter {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				} else {
+					beforeCodeBlock = codeBlockIndentation.appendNewLine(beforeCodeBlock.Pos.BlockLen, nowCodeBlock)
+					//nowFloor = beforeCodeBlock.NowPos.BlockLen
+					//beforeCodeBlock = appendNewLineCodeBlock(beforeCodeBlock, nowCodeBlock, codeBlockIndentation, beforeFloor, nowFloor)
+					//beforeFloor = nowFloor
+				}
+			case CbtSpace:
+				if t == CbtSpace {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				}
+			case CbtTab:
+				if t == CbtTab {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				}
+			case CbtLeftBracket:
+				beforeCodeBlock = beforeCodeBlock.appendChild(nowCodeBlock)
+			case CbtRightBracket:
+				beforeCodeBlock = beforeCodeBlock.ParCodeBlock
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtColon:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtComma:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtDunHao:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtSemicolon:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtPeriod:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			case CbtOperator:
+				if t == CbtOperator {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				}
+			case CbtOtherChar:
+				if t == CbtOtherChar {
+					beforeCodeBlock.addBlockLen(txtCode, nowPos.BlockLen)
+				} else {
+					beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+				}
+			default:
+				beforeCodeBlock = beforeCodeBlock.appendNext(nowCodeBlock)
+			}
+		}
+		nowPos.Width = nowPos.Width + nowPos.BlockLen
+		if n > 0 {
+			if (beforeChar == '\r') && (nowChar == '\n') {
+				nowPos.Width = 1
+			} else if nowChar == '\n' || nowChar == '\r' {
+				nowPos.LineNo = nowPos.LineNo + 1
+				nowPos.Width = 1
+			}
+		}
+		beforeChar = nowChar
+	}
+
+	var printCodeBlock func(block *CodeBlock, floor int)
+	printCodeBlock = func(block *CodeBlock, floor int) {
+		if block.BlockType == CbtLine {
+			tab := strings.Repeat("\t", block.Pos.Width)
+			fmt.Print("\n")
+			fmt.Printf("%s行%d，列%d, %d  ", tab, block.Pos.LineNo,
+				block.Pos.Width, block.BlockType)
+		}
+		switch block.BlockType {
+		case CbtSpace, CbtTab, CbtNewLineTab, CbtEnter, CbtLine:
+		default:
+			fmt.Printf("<%s>", block.Words)
+
+		}
+
+		if len(block.Items) > 0 {
+			fmt.Print("[")
+
+			for _, item := range block.Items {
+				//fmt.Println(n)
+				printCodeBlock(item, floor+1)
+
+			}
+			fmt.Print("]")
+
+		}
+		if block.BlockType == CbtLine {
+			//fmt.Print("\n")
+		}
+
+	}
+
+	return
+}
+
+func (code *TxtCode) AnalyzeWords() (err error) {
+	code.CodeBlock, err = getCodeBlockFromTxt(string(code.CodeTxt))
+	if err != nil {
+		return
+	}
+
+	return
+
+}
+
+func (code *TxtCode) XmlElementAddCodeBlock(parElement *etree.Element, codeBlock *CodeBlock) {
+	itemCount := len(codeBlock.Items)
+	showWords := false
+	name := ""
+	switch codeBlock.BlockType {
+	case CbtFile:
+		name = "程序"
+	case CbtLine:
+		name = fmt.Sprintf("代码行-%d", codeBlock.Pos.LineNo)
+	case CbtChildLine:
+		name = "代码子行"
+	case CbtCR:
+		name = "回车"
+	case CbtLF:
+		name = "换行"
+	case CbtCRLF:
+		name = "回车换行"
+	case CbtSpace:
+		name = "空格"
+	case CbtTab:
+		name = "Tab"
+	case CbtEnter:
+		name = "软回车"
+	case CbtNewLineTab:
+		if itemCount == 0 {
+			name = ""
+		} else {
+			name = "集合"
+		}
+	case CbtLeftBracket:
+		name = "左括号"
+	case CbtRightBracket:
+		name = "右括号"
+	case CbtLeftSquareBracket:
+		name = "左中括号"
+	case CbtRightSquareBracket:
+		name = "右中括号"
+	case CbtLeftBigBracket:
+		name = "左大括号"
+	case CbtRightBigBracket:
+		name = "右大括号"
+	case CbtColon:
+		name = "冒号"
+	case CbtComma:
+		name = "逗号"
+	case CbtDunHao:
+		name = "顿号"
+	case CbtSemicolon:
+		name = "分号"
+	case CbtPeriod:
+		name = "句号"
+	case CBtBackslash:
+		name = "反斜杠"
+	case CbtPoint:
+		name = "点"
+	case CbtOperator:
+		name = "运算符"
+		showWords = true
+	case CbtUnderscore, CbtLetter:
+		name = "标识符"
+		showWords = true
+	case CbtNumber:
+		name = "数字"
+		showWords = true
+	case CbtString:
+		name = "字符串"
+		showWords = true
+	case CbtComment:
+		name = "注释"
+		showWords = true
+	default:
+		name = "未知" + strconv.Itoa(int(codeBlock.BlockType))
+		showWords = true
+	}
+	if name != "" {
+		element := parElement.CreateElement(name)
+		if showWords {
+			element.SetText(code.getCodeWords(codeBlock))
+		}
+		if codeBlock.Comment != "" {
+			element.CreateAttr("注释", codeBlock.Comment)
+		}
+		//element.CreateAttr("start", strconv.Itoa(codeBlock.Pos.StartNo))
+		//element.CreateAttr("len", strconv.Itoa(codeBlock.Pos.BlockLen))
+		//element.CreateAttr("line", strconv.Itoa(codeBlock.Pos.LineNo))
+		element.CreateAttr("col", strconv.Itoa(codeBlock.Pos.ColNo))
+		element.CreateAttr("left", strconv.Itoa(codeBlock.Pos.Width))
+		if codeBlock.TrailingEnter > 0 {
+			element.CreateAttr("enter", strconv.Itoa(codeBlock.TrailingEnter))
+		}
+		if codeBlock.NextLineIndent > 0 {
+			element.CreateAttr("NextLineIndent", strconv.Itoa(codeBlock.NextLineIndent))
+		}
+		if codeBlock.LineIndent > 0 {
+			element.CreateAttr("LineIndent", strconv.Itoa(codeBlock.LineIndent))
+		}
+
+		if codeBlock.TrailingSpace {
+			element.CreateAttr("space", "true")
+		}
+		for _, c := range codeBlock.Items {
+			code.XmlElementAddCodeBlock(element, c)
+		}
+	}
+
+	return
+}
+func (code *TxtCode) ToXmlFile(path string) (err error) {
+
+	doc := etree.NewDocument()
+	doc.CreateProcInst("xml", `version="1.0" encoding="UTF-8"`)
+	element := doc.CreateElement("程序")
+	for _, codeBlock := range code.CodeBlock.Items {
+		code.XmlElementAddCodeBlock(element, codeBlock)
+	}
+
+	doc.Indent(2)
+	err = doc.WriteToFile(path)
+
+	if err != nil {
+		return
+	}
+
+	return
+
+}
+
+func CodeBlockToString(block *CodeBlock) string {
+
+	var words []string
+	var w string
+	switch block.BlockType {
+	case CbtSpace:
+	case CbtLine:
+		w = strings.Repeat(" ", block.LineIndent)
+		//fmt.Sprintf("%d,%d", block.NowPos.LineNo, block.NowPos.Width)
+	case CbtFile, CbtChildLine:
+	case CbtNewLineTab:
+
+	case CbtEnter:
+
+		//w = block.Words
+	case CbtLeftBracket:
+		w = "（"
+	case CbtRightBracket:
+		w = "）"
+	case CbtColon:
+		w = "："
+	case CbtDunHao:
+		w = "、"
+	case CbtComma:
+		w = "，"
+	case CbtPeriod:
+		w = "。"
+	case CbtSemicolon:
+		w = "；"
+
+	default:
+		w = block.getWords()
+		if block.TrailingSpace {
+			w = w + " "
+		}
+	}
+	if block.Comment != "" {
+		if w != "" {
+			w = w + " "
+		}
+		w = w + block.Comment
+	}
+
+	words = append(words, w)
+
+	for _, item := range block.Items {
+		w = CodeBlockToString(item)
+		words = append(words, w)
+	}
+	if block.BlockType == CbtLine {
+		words = append(words, "\n")
+	} else if block.TrailingEnter > 0 {
+		words = append(words, "\n")
+		if block.NextLineIndent > 0 {
+			w := strings.Repeat(" ", block.NextLineIndent)
+			words = append(words, w)
+		}
+
+	}
+	return strings.Join(words, "")
+
+}
+
+func (code *TxtCode) formatToFile(path string) (err error) {
+	f, err := os.Create(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	data := CodeBlockToString(code.CodeBlock)
+	_, err = f.Write([]byte(data))
+	if err != nil {
+		return
+	}
+	return
+}

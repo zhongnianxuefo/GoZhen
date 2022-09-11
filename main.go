@@ -33,19 +33,30 @@ func main() {
 	err := z.LoadTxtFile("Zhen/演示代码1.z1")
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
-	z.txtCode.formatToFile("Zhen/格式化演示代码1.z1")
 
-	err = z.LoadTxtFile("Zhen/格式化演示代码1.z1")
+	toXml := NewCodeBlockToXml(z.MainCodeBlock)
+
+	toXml.ToXmlFile("Zhen/格式化演示代码1.xml")
+	format := NewCodeBlockFormat(z.MainCodeBlock)
+	err = format.formatToFile("Zhen/格式化演示代码1.z1")
 	if err != nil {
 		fmt.Println(err)
+		return
 	}
-	z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
-	z.txtCode.ToXmlFile("Zhen/格式化演示代码2.xml")
+	//z.txtCode.formatToFile("Zhen/格式化演示代码1.z1")
+
+	//err = z.LoadTxtFile("Zhen/格式化演示代码1.z1")
+	//if err != nil {
+	//	fmt.Println(err)
+	//}
+	//z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
+	//z.txtCode.ToXmlFile("Zhen/格式化演示代码2.xml")
 	err = z.LoadString(codes)
-	if err != nil {
-		fmt.Println(err)
-	}
+	//if err != nil {
+	//	fmt.Println(err)
+	//}
 	fmt.Println("代码分析完成!")
 
 	start := time.Now()

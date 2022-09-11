@@ -16,7 +16,8 @@ type ZhenState struct {
 	localValues  ZhenValueTable
 	tempValues   [ZhenTempValuesLen]ZhenValue
 
-	txtCode  TxtCode
+	MainCodeBlock *CodeBlock
+	//txtCode  TxtCode
 	allCodes []ZhenCodeOld
 
 	allCodeStepPointers []*ZhenCodeStep
@@ -54,11 +55,18 @@ func (zhen *ZhenState) LoadTxtFile(fileName string) (err error) {
 	return zhen.LoadTxt(string(content))
 }
 func (zhen *ZhenState) LoadTxt(codes string) (err error) {
-	zhen.txtCode, err = newTxtCode(codes)
+
+	Analyze := NewTxtCodeAnalyze(codes)
+
+	err = Analyze.AnalyzeCode()
+	if err != nil {
+		return nil
+	}
+
+	zhen.MainCodeBlock = Analyze.MainCode
 	if err != nil {
 		return
 	}
-	//fmt.Print(zhen.txtCode.toString())
 
 	return
 }
@@ -154,6 +162,7 @@ func (zhen *ZhenState) GetTempVarValue(tempValueNo int) (value ZhenValue) {
 
 func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 	st := s.codeStepType
+
 	switch st {
 	case ZCS_None:
 
