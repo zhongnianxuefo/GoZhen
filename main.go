@@ -5,6 +5,30 @@ import (
 	"time"
 )
 
+func test(txtCodeFile string, xmlFile string, formatFile string) (err error) {
+	z := NewZhenState()
+	z.debug = false
+	err = z.LoadTxtFile(txtCodeFile)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	toXml := NewCodeBlockToXml(z.MainCodeBlock)
+	err = toXml.ToXmlFile(xmlFile)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	format := NewCodeBlockFormat(z.MainCodeBlock)
+	err = format.formatToFile(formatFile)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	return
+}
+
 func main() {
 	fmt.Println("Hello, World!")
 	codes := ` 
@@ -28,24 +52,18 @@ func main() {
 <代码行><关键字>显示变量</关键字><变量名>C</变量名><代码 指令="显示变量" 变量名="C" /></代码行>
 </程序>
 `
-	z := NewZhenState()
-	z.debug = false
-	err := z.LoadTxtFile("Zhen/演示代码1.z1")
-	if err != nil {
-		fmt.Println(err)
+
+	err1 := test("Zhen/演示代码1.z1", "Zhen/格式化演示代码1.xml", "Zhen/格式化演示代码1.z1")
+	if err1 != nil {
+		fmt.Println(err1)
 		return
 	}
 
-	toXml := NewCodeBlockToXml(z.MainCodeBlock)
-
-	toXml.ToXmlFile("Zhen/格式化演示代码1.xml")
-	format := NewCodeBlockFormat(z.MainCodeBlock)
-	err = format.formatToFile("Zhen/格式化演示代码1.z1")
-	if err != nil {
-		fmt.Println(err)
+	err2 := test("Zhen/格式化演示代码1.z1", "Zhen/格式化演示代码2.xml", "Zhen/格式化演示代码2.z1")
+	if err2 != nil {
+		fmt.Println(err2)
 		return
 	}
-	//z.txtCode.formatToFile("Zhen/格式化演示代码1.z1")
 
 	//err = z.LoadTxtFile("Zhen/格式化演示代码1.z1")
 	//if err != nil {
@@ -53,7 +71,9 @@ func main() {
 	//}
 	//z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
 	//z.txtCode.ToXmlFile("Zhen/格式化演示代码2.xml")
-	err = z.LoadString(codes)
+	z := NewZhenState()
+	z.debug = false
+	err := z.LoadString(codes)
 	//if err != nil {
 	//	fmt.Println(err)
 	//}

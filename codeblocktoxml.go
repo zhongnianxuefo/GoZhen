@@ -35,8 +35,6 @@ func (toXml *CodeBlockToXml) ToXmlElement(codeBlock *CodeBlock, element *etree.E
 		name = "空格"
 	case CbtTab:
 		name = "Tab"
-	case CbtEnter:
-		name = "软回车"
 	case CbtLeftBracket:
 		name = "左括号"
 	case CbtRightBracket:
@@ -66,7 +64,7 @@ func (toXml *CodeBlockToXml) ToXmlElement(codeBlock *CodeBlock, element *etree.E
 	case CbtOperator:
 		name = "运算符"
 		showWords = true
-	case CbtUnderscore, CbtLetter:
+	case CbtLetter:
 		name = "标识符"
 		showWords = true
 	case CbtNumber:
@@ -92,6 +90,7 @@ func (toXml *CodeBlockToXml) ToXmlElement(codeBlock *CodeBlock, element *etree.E
 		}
 		e.CreateAttr("line", strconv.Itoa(codeBlock.Pos.LineNo))
 		e.CreateAttr("col", strconv.Itoa(codeBlock.Pos.ColNo))
+		e.CreateAttr("len", strconv.Itoa(codeBlock.Pos.BlockLen))
 
 		if codeBlock.LineIndent > 0 {
 			e.CreateAttr("LineIndent", strconv.Itoa(codeBlock.LineIndent))

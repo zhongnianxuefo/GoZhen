@@ -12,22 +12,25 @@ type TxtCodeAnalyze struct {
 
 	NowPos        CodeBlockPos
 	LastCodeBlock *CodeBlock
-	LastRune      rune
+	LastChar      rune
 	NewLine       bool
 	Nowrap        bool
 	BracketCount  int
 }
 
-func NewTxtCodeAnalyze(CodeTxt string) (analyze *TxtCodeAnalyze) {
+func NewTxtCodeAnalyze(codeTxt string) (analyze *TxtCodeAnalyze) {
 	analyze = &TxtCodeAnalyze{}
-	analyze.AllCodeRunes = []rune(CodeTxt)
+	txt := codeTxt
+	//txt = strings.ReplaceAll(codeTxt, "\r\n", "\n")
+	//txt = strings.ReplaceAll(txt, "\r", "\n")
+	analyze.AllCodeRunes = []rune(txt)
 
-	analyze.NowPos = CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, ColNo: 1}
+	analyze.NowPos = CodeBlockPos{StartNo: 0, BlockLen: 0, LineNo: 1, LineCount: 1, ColNo: 1}
 	analyze.MainCode = analyze.newCodeBlock(analyze.NowPos, CbtFile)
 	analyze.MainCode.ParCodeBlock = analyze.MainCode
 
 	analyze.LastCodeBlock = analyze.MainCode
-	analyze.LastRune = 0
+	analyze.LastChar = 0
 	analyze.NewLine = true
 	analyze.Nowrap = false
 	analyze.BracketCount = 0
@@ -64,7 +67,7 @@ func (analyze *TxtCodeAnalyze) appendNext(codeBlock *CodeBlock) {
 
 func (analyze *TxtCodeAnalyze) appendChild(codeBlock *CodeBlock) {
 	analyze.LastCodeBlock.addItem(codeBlock)
-	analyze.NewLine = false
+	//analyze.NewLine = false
 	analyze.LastCodeBlock = codeBlock
 }
 
@@ -83,12 +86,13 @@ func (analyze *TxtCodeAnalyze) CheckChar(n int, char rune) {
 	if !check {
 		check = analyze.CheckString(nowCodeBlock)
 	}
-	if !check {
-		check = analyze.CheckCRLF(nowCodeBlock)
-	}
+	//if !check {
+	//	check = analyze.CheckCRLF(nowCodeBlock)
+	//}
 	if !check {
 		check = analyze.CheckBracket(nowCodeBlock)
 	}
+
 	if !check {
 		check = analyze.CheckOperator(nowCodeBlock)
 	}
@@ -97,6 +101,9 @@ func (analyze *TxtCodeAnalyze) CheckChar(n int, char rune) {
 	}
 	if !check {
 		check = analyze.CheckNumber(nowCodeBlock)
+	}
+	if !check {
+		check = analyze.CheckCRLF(nowCodeBlock)
 	}
 	if !check {
 		check = analyze.CheckNowrap(nowCodeBlock)
@@ -110,21 +117,29 @@ func (analyze *TxtCodeAnalyze) CheckCharEnd() {
 	switch analyze.LastCodeBlock.BlockType {
 	case CbtPound:
 		analyze.LastCodeBlock.BlockType = CbtComment
+
+	case CbtLeftQuotation, CbtLeftApostrophe, CbtApostrophe, CbtQuotation:
+		analyze.LastCodeBlock.BlockType = CbtString
+
 	default:
 		//todo 括号是否结束等问题
 	}
 }
 
 func (analyze *TxtCodeAnalyze) ChangePosLineNo(char rune) {
-	if analyze.LastRune == '\r' && char == '\n' {
+	if analyze.LastChar == '\r' && char == '\n' {
+		analyze.NowPos.LineNo += 1
 		analyze.NowPos.ColNo = 1
-	} else if char == '\r' || char == '\n' {
+	} else if analyze.LastChar == '\r' && char == '\r' {
+		analyze.NowPos.LineNo += 1
+		analyze.NowPos.ColNo = 1
+	} else if char == '\n' {
 		analyze.NowPos.LineNo += 1
 		analyze.NowPos.ColNo = 1
 	} else {
 		analyze.NowPos.ColNo += 1
 	}
-	analyze.LastRune = char
+	analyze.LastChar = char
 }
 
 func (analyze *TxtCodeAnalyze) getRuneCodeBlockType(r rune) (t CodeBlockType) {
@@ -181,10 +196,12 @@ func (analyze *TxtCodeAnalyze) getRuneCodeBlockType(r rune) (t CodeBlockType) {
 		t = CbtOperator
 	case '>', '<', '&', '|', '!':
 		t = CbtOperator
-	case '_':
-		t = CbtUnderscore
+	case '^', '?':
+		t = CbtOperator
 	case '.':
 		t = CbtPoint
+	case '_', '@':
+		t = CbtLetter
 	default:
 		if unicode.IsLetter(r) {
 			t = CbtLetter
@@ -199,7 +216,7 @@ func (analyze *TxtCodeAnalyze) getRuneCodeBlockType(r rune) (t CodeBlockType) {
 
 func (analyze *TxtCodeAnalyze) CheckNewLine(nowCodeBlock *CodeBlock) (check bool) {
 	if analyze.NewLine {
-		switch nowCodeBlock.BlockType {
+		switch analyze.LastCodeBlock.BlockType {
 		case CbtLeftApostrophe, CbtLeftQuotation:
 			//多行字符串中换行符保留到字符串中
 			analyze.NewLine = false
@@ -216,6 +233,12 @@ func (analyze *TxtCodeAnalyze) CheckNewLine(nowCodeBlock *CodeBlock) (check bool
 				analyze.LastCodeBlock = analyze.MainCode
 				analyze.appendChild(lineCodeBlock)
 				analyze.appendChild(nowCodeBlock)
+				switch nowCodeBlock.BlockType {
+				case CbtLF:
+					analyze.NewLine = true
+				default:
+					analyze.NewLine = false
+				}
 				check = true
 			}
 		}
@@ -227,13 +250,14 @@ func (analyze *TxtCodeAnalyze) CheckComment(nowCodeBlock *CodeBlock) (check bool
 	//单行注释#号键开始
 	if analyze.LastCodeBlock.BlockType == CbtPound {
 		switch nowCodeBlock.BlockType {
-		case CbtCR, CbtLF, CbtCRLF, CbtEnter:
+		case CbtCR, CbtLF, CbtCRLF:
 			analyze.LastCodeBlock.BlockType = CbtComment
-			analyze.appendNext(nowCodeBlock)
+			//analyze.appendNext(nowCodeBlock)
 		default:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
+			check = true
 		}
-		check = true
+
 	}
 	return
 }
@@ -244,43 +268,43 @@ func (analyze *TxtCodeAnalyze) CheckString(nowCodeBlock *CodeBlock) (check bool)
 	case CbtLeftQuotation:
 		switch nowCodeBlock.BlockType {
 		case CbtRightQuotation:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 			analyze.LastCodeBlock.BlockType = CbtString
 		default:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 		}
 		check = true
 	case CbtLeftApostrophe:
 		switch nowCodeBlock.BlockType {
 		case CbtRightApostrophe:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 			analyze.LastCodeBlock.BlockType = CbtString
 		default:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 		}
 		check = true
 	case CbtApostrophe:
 		switch nowCodeBlock.BlockType {
 		case CbtApostrophe:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 			analyze.LastCodeBlock.BlockType = CbtString
 		case CbtCR, CbtLF, CbtCRLF:
 			analyze.LastCodeBlock.BlockType = CbtString
 			analyze.appendNext(nowCodeBlock)
 		default:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 		}
 		check = true
 	case CbtQuotation:
 		switch nowCodeBlock.BlockType {
 		case CbtQuotation:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 			analyze.LastCodeBlock.BlockType = CbtString
 		case CbtCR, CbtLF, CbtCRLF:
 			analyze.LastCodeBlock.BlockType = CbtString
 			analyze.appendNext(nowCodeBlock)
 		default:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 		}
 		check = true
 	}
@@ -289,25 +313,74 @@ func (analyze *TxtCodeAnalyze) CheckString(nowCodeBlock *CodeBlock) (check bool)
 
 func (analyze *TxtCodeAnalyze) CheckCRLF(nowCodeBlock *CodeBlock) (check bool) {
 	//震语言默认用\n换行，但是也支持windows中\n\r换行
+
+	//if analyze.LastChar == '\r' && char == '\n' {
+	//	analyze.NowPos.LineNo += 1
+	//	analyze.NowPos.ColNo = 1
+	//} else if analyze.LastChar == '\r' && char == '\r' {
+	//	analyze.NowPos.LineNo += 1
+	//	analyze.NowPos.ColNo = 1
+	//} else if char == '\n' {
+	//	analyze.NowPos.LineNo += 1
+	//	analyze.NowPos.ColNo = 1
+	//} else {
+	//	analyze.NowPos.ColNo += 1
+	//}
 	switch analyze.LastCodeBlock.BlockType {
 	case CbtCR:
 		switch nowCodeBlock.BlockType {
 		case CbtLF:
 			analyze.LastCodeBlock.BlockType = CbtCRLF
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
 			analyze.NewLine = true
+			check = true
 		case CbtCR:
 			analyze.appendNext(nowCodeBlock)
 			analyze.NewLine = true
+			check = true
 		default:
-			analyze.appendNext(nowCodeBlock)
+			//analyze.appendNext(nowCodeBlock)
+			//analyze.NewLine = true
 		}
-		check = true
-	case CbtLF:
-		analyze.appendNext(nowCodeBlock)
-		analyze.NewLine = true
-		check = true
+
+	default:
+		switch nowCodeBlock.BlockType {
+		case CbtLF:
+			analyze.appendNext(nowCodeBlock)
+			analyze.NewLine = true
+			check = true
+		}
+
+		//analyze.NewLine = true
 	}
+	//if !check {
+	//
+	//}
+	//switch nowCodeBlock.BlockType {
+	//case CbtLF:
+	//	switch nowCodeBlock.BlockType {
+	//	case CbtCR, CbtLF:
+	//		analyze.appendNext(nowCodeBlock)
+	//		analyze.NewLine = true
+	//	default:
+	//		analyze.appendNext(nowCodeBlock)
+	//		analyze.NewLine = true
+	//
+	//	}
+	//	analyze.NewLine = true
+	//	//analyze.appendNext(nowCodeBlock)
+	//	//analyze.NewLine = true
+	//	check = true
+	//default:
+	//	//switch nowCodeBlock.BlockType {
+	//	//case CbtCR, CbtLF:
+	//	//	analyze.appendNext(nowCodeBlock)
+	//	//	analyze.NewLine = true
+	//	//	check = true
+	//	//}
+	//	//analyze.NewLine = true
+	//}
+	//analyze.NewLine = true
 	return
 }
 
@@ -321,8 +394,8 @@ func (analyze *TxtCodeAnalyze) CheckBracket(nowCodeBlock *CodeBlock) (check bool
 	case CbtRightBracket, CbtRightSquareBracket, CbtRightBigBracket:
 		analyze.BracketCount -= 1
 		analyze.LastCodeBlock = analyze.LastCodeBlock.ParCodeBlock
-		analyze.appendNext(nowCodeBlock)
-		check = true
+		//analyze.appendNext(nowCodeBlock)
+		//check = true
 		//case CbtCR, CbtLF, CbtCRLF:
 		//	if analyze.BracketCount > 0 {
 		//		analyze.LastCodeBlock.BlockType = CbtEnter
@@ -336,14 +409,16 @@ func (analyze *TxtCodeAnalyze) CheckBracket(nowCodeBlock *CodeBlock) (check bool
 func (analyze *TxtCodeAnalyze) CheckOperator(nowCodeBlock *CodeBlock) (check bool) {
 	//震语言支持多种组合运算符
 	switch analyze.LastCodeBlock.BlockType {
-	case CbtOperator:
+	case CbtOperator, CbtColon:
 		switch nowCodeBlock.BlockType {
 		case CbtOperator:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.BlockType = CbtOperator
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
+			check = true
 		default:
-			analyze.appendNext(nowCodeBlock)
+			//analyze.appendNext(nowCodeBlock)
 		}
-		check = true
+
 	}
 	return
 
@@ -352,18 +427,20 @@ func (analyze *TxtCodeAnalyze) CheckOperator(nowCodeBlock *CodeBlock) (check boo
 func (analyze *TxtCodeAnalyze) CheckLetter(nowCodeBlock *CodeBlock) (check bool) {
 	//标识符需要以下划线、字母或者汉字开头，然后标识符中可以包含数字
 	switch analyze.LastCodeBlock.BlockType {
-	case CbtUnderscore, CbtLetter:
+	case CbtLetter:
 		switch nowCodeBlock.BlockType {
-		case CbtUnderscore, CbtLetter, CbtNumber:
-			analyze.LastCodeBlock.addLen(1)
+		case CbtLetter, CbtNumber:
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
+			check = true
 		case CbtPoint:
 			//todo 标识符要不要用点直接分割
 			analyze.appendNext(nowCodeBlock)
 			//analyze.LastCodeBlock.addLen(1)
+			check = true
 		default:
-			analyze.appendNext(nowCodeBlock)
+			//analyze.appendNext(nowCodeBlock)
 		}
-		check = true
+
 	}
 	return
 }
@@ -374,11 +451,12 @@ func (analyze *TxtCodeAnalyze) CheckNumber(nowCodeBlock *CodeBlock) (check bool)
 	case CbtNumber:
 		switch nowCodeBlock.BlockType {
 		case CbtNumber, CbtPoint, CbtLetter:
-			analyze.LastCodeBlock.addLen(1)
+			analyze.LastCodeBlock.setEndPos(nowCodeBlock)
+			check = true
 		default:
-			analyze.appendNext(nowCodeBlock)
+			//analyze.appendNext(nowCodeBlock)
 		}
-		check = true
+
 	}
 	return
 }
@@ -395,7 +473,7 @@ func (analyze *TxtCodeAnalyze) CheckNowrap(nowCodeBlock *CodeBlock) (check bool)
 		switch analyze.LastCodeBlock.BlockType {
 		case CbtSpace, CbtFullWidthSpace, CbtTab:
 			analyze.Nowrap = true
-		case CbtLF, CbtCR, CbtCRLF, CbtEnter:
+		case CbtLF, CbtCR, CbtCRLF:
 			//analyze.LastCodeBlock.BlockType = CbtEnter
 			analyze.Nowrap = true
 		case CbtComment:
@@ -539,8 +617,9 @@ func (analyze *TxtCodeAnalyze) CheckLineIndent(codeBlock *CodeBlock) (err error)
 	for _, c := range oldItems {
 		if analyze.CheckLineEmpty(c, true) {
 			//codeBlock.addItem(c)
-		} else if analyze.CheckLineEmpty(c, false) {
-			codeBlock.addItem(c)
+			//} else if analyze.CheckLineEmpty(c, false) {
+			//	c.LineIndent = lastLine.LineIndent
+			//	codeBlock.addItem(c)
 		} else {
 			c.LineIndent = analyze.getIndent(c)
 			if firstLine {
@@ -575,8 +654,6 @@ func (analyze *TxtCodeAnalyze) ClearEmptyCodeBlock(codeBlock *CodeBlock) {
 	beforeCode := codeBlock
 	for _, c := range oldItems {
 		switch c.BlockType {
-		case CbtEnter:
-
 		case CbtCR, CbtLF, CbtCRLF:
 			//codeBlock.addItem(c)
 		case CbtSpace, CbtFullWidthSpace, CbtTab:

@@ -4,8 +4,9 @@ type CodeBlockPos struct {
 	StartNo  int
 	BlockLen int
 
-	LineNo int
-	ColNo  int
+	LineNo    int
+	LineCount int
+	ColNo     int
 }
 
 type CodeBlockType int
@@ -31,7 +32,6 @@ const (
 	CbtCR
 	CbtLF
 	CbtCRLF
-	CbtEnter
 	CbtColon
 	CbtComma
 	CbtDunHao
@@ -39,7 +39,7 @@ const (
 	CbtPeriod
 	CBtBackslash
 	CbtOperator
-	CbtUnderscore
+	//CbtUnderscore
 	CbtLetter
 	CbtNumber
 	CbtPoint
@@ -69,6 +69,8 @@ func NewCodeBlock(codeChars []rune, pos CodeBlockPos, codeBlockType CodeBlockTyp
 	codeBlock.AllCodeChars = codeChars
 	codeBlock.Pos = pos
 	codeBlock.BlockType = codeBlockType
+	//codeBlock.LineIndent = 0
+
 	return
 }
 func (codeBlock *CodeBlock) getChars() string {
@@ -77,8 +79,19 @@ func (codeBlock *CodeBlock) getChars() string {
 	return string(codeBlock.AllCodeChars[s:e])
 }
 
-func (codeBlock *CodeBlock) addLen(addBlockLen int) {
-	codeBlock.Pos.BlockLen += addBlockLen
+//func (codeBlock *CodeBlock) addLen(addBlockLen int) {
+//	codeBlock.Pos.BlockLen += addBlockLen
+//}
+
+func (codeBlock *CodeBlock) setEndPos(endItem *CodeBlock) {
+	endNo := endItem.Pos.StartNo + endItem.Pos.BlockLen
+	if endNo > codeBlock.Pos.StartNo {
+		codeBlock.Pos.BlockLen = endNo - codeBlock.Pos.StartNo
+	}
+	endLineNo := endItem.Pos.LineNo
+	if endLineNo > codeBlock.Pos.LineNo {
+		codeBlock.Pos.LineCount = endLineNo - codeBlock.Pos.LineNo + 1
+	}
 }
 
 func (codeBlock *CodeBlock) addItem(item *CodeBlock) {
