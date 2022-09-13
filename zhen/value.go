@@ -1,4 +1,4 @@
-package main
+package zhen
 
 import (
 	"errors"
@@ -27,12 +27,10 @@ type ZhenValueString string
 type ZhenValueArray []ZhenValue
 type ZhenValueTable map[string]ZhenValue
 
-type ZhenValueFunction struct {
-	FunctionName string
-	Function     func()
-}
+type ZhenValueFunction func(state *ZhenState) error
 
 type ZhenValue struct {
+	valueName     string
 	valueType     ZhenValueType
 	valueBool     ZhenValueBoolean
 	valueNumber   ZhenValueNumber
@@ -85,6 +83,11 @@ func NewZhenValueTable(valueTable ZhenValueTable) (v ZhenValue) {
 func NewZhenValueFunction(valueFunction ZhenValueFunction) (v ZhenValue) {
 	v.valueType = ZhenValueTypeFunction
 	v.valueFunction = valueFunction
+	return
+}
+func StringToZhenValue(valueString string) (v ZhenValue) {
+	v.valueType = ZhenValueTypeString
+	v.valueString = ZhenValueString(valueString)
 	return
 }
 
@@ -241,14 +244,14 @@ func ZhenValueToString(v ZhenValue) (s string) {
 		}
 		s = strings.Join(ws, ", ")
 	case ZhenValueTypeFunction:
-		s = v.valueFunction.FunctionName
+		s = v.valueName
 	default:
 		fmt.Println("未知类型。", v.valueType)
 	}
 	return
 }
 
-func getZhenValueFromElement(item *etree.Element) (v ZhenValue, err error) {
+func GetZhenValueFromElement(item *etree.Element) (v ZhenValue, err error) {
 	valueType := item.SelectAttrValue("值类型", "")
 	value := item.SelectAttrValue("值", "")
 

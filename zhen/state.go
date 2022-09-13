@@ -1,4 +1,4 @@
-package main
+package zhen
 
 import (
 	"errors"
@@ -22,6 +22,8 @@ type ZhenState struct {
 
 	allCodeStepPointers []*ZhenCodeStep
 	runCodeStep         int
+
+	NowCodeBlock *CodeBlock
 }
 
 func NewZhenState() (zhen ZhenState) {
@@ -70,6 +72,7 @@ func (zhen *ZhenState) LoadTxt(codes string) (err error) {
 
 	return
 }
+
 func (zhen *ZhenState) LoadString(code string) (err error) {
 	doc := etree.NewDocument()
 	err = doc.ReadFromString(code)
@@ -114,7 +117,6 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 	}
 
 }
-
 func (zhen *ZhenState) SetVarValue(valueName string, value ZhenValue) {
 	//todo 局部变量如何处理
 	zhen.globalValues[valueName] = value
@@ -122,6 +124,15 @@ func (zhen *ZhenState) SetVarValue(valueName string, value ZhenValue) {
 
 func (zhen *ZhenState) GetVarValue(valueName string) (value ZhenValue) {
 	//todo 局部变量如何处理
+	value = zhen.globalValues[valueName]
+	return
+}
+
+func (zhen *ZhenState) SetGlobalVarValue(valueName string, value ZhenValue) {
+	zhen.globalValues[valueName] = value
+}
+
+func (zhen *ZhenState) GetGlobalVarValue(valueName string) (value ZhenValue) {
 	value = zhen.globalValues[valueName]
 	return
 }
@@ -137,6 +148,7 @@ func (zhen *ZhenState) GetTempVarValue(tempValueNo int) (value ZhenValue) {
 	return
 }
 
+//
 //func (zhen *ZhenState) Var(s *ZhenCodeStep) {
 //	//todo 局部变量如何处理
 //	zhen.globalValues[s.valueName1] = s.value
@@ -145,7 +157,7 @@ func (zhen *ZhenState) GetTempVarValue(tempValueNo int) (value ZhenValue) {
 //	}
 //
 //}
-
+//
 //func (zhen *ZhenState) Assign(s *ZhenCodeStep) {
 //	//todo 局部变量如何处理
 //	zhen.globalValues[s.valueName] = s.value
@@ -167,14 +179,14 @@ func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 	case ZCS_None:
 
 	case ZCS_Var:
-		zhen.SetVarValue(s.valueName1, s.value)
+		zhen.SetGlobalVarValue(s.valueName1, s.value)
 	case ZCS_As:
-		v := zhen.GetVarValue(s.valueName1)
-		zhen.SetVarValue(s.valueName2, v)
+		v := zhen.GetGlobalVarValue(s.valueName1)
+		zhen.SetGlobalVarValue(s.valueName2, v)
 
 	case ZCS_Add, ZCS_Sub, ZCS_Mul, ZCS_Div, ZCS_Eq, ZCS_Ne, ZCS_Gt, ZCS_Lt, ZCS_And, ZCS_Or:
-		v1 := zhen.GetVarValue(s.valueName1)
-		v2 := zhen.GetVarValue(s.valueName2)
+		v1 := zhen.GetGlobalVarValue(s.valueName1)
+		v2 := zhen.GetGlobalVarValue(s.valueName2)
 		var v ZhenValue
 		v, err = ZhenValueOperation(st, v1, v2)
 		if err != nil {
@@ -183,7 +195,7 @@ func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 		zhen.SetTempVarValue(s.tempValueNo1, v)
 
 	case ZCS_Not:
-		v1 := zhen.GetVarValue(s.valueName1)
+		v1 := zhen.GetGlobalVarValue(s.valueName1)
 		var v2 ZhenValue
 		var v ZhenValue
 		v, err = ZhenValueOperation(st, v1, v2)
@@ -195,14 +207,14 @@ func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 	case ZCS_TVar:
 		zhen.SetTempVarValue(s.tempValueNo1, s.value)
 	case ZCS_TFrom:
-		v := zhen.GetVarValue(s.valueName1)
+		v := zhen.GetGlobalVarValue(s.valueName1)
 		zhen.SetTempVarValue(s.tempValueNo1, v)
 	case ZCS_TAs:
 		v := zhen.GetTempVarValue(s.tempValueNo1)
-		zhen.SetVarValue(s.valueName1, v)
+		zhen.SetGlobalVarValue(s.valueName1, v)
 	case ZCS_TAdd, ZCS_TSub, ZCS_TMul, ZCS_TDiv, ZCS_TEq, ZCS_TNe, ZCS_TGt, ZCS_TLt, ZCS_TAnd, ZCS_TOr:
 		v1 := zhen.GetTempVarValue(s.tempValueNo1)
-		v2 := zhen.GetVarValue(s.valueName1)
+		v2 := zhen.GetGlobalVarValue(s.valueName1)
 		var v ZhenValue
 
 		v, err = ZhenValueOperation(st, v1, v2)
@@ -250,7 +262,7 @@ func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 	case ZCS_Call:
 		//todo 运行函数指令
 	case ZCS_PrintVar:
-		v := zhen.GetVarValue(s.valueName1)
+		v := zhen.GetGlobalVarValue(s.valueName1)
 		fmt.Printf("变量：%s，值为：%s\n", s.valueName1, ZhenValueToString(v))
 
 	default:
@@ -262,6 +274,89 @@ func (zhen *ZhenState) codeStepRun(s *ZhenCodeStep) (err error) {
 }
 
 func (zhen *ZhenState) Run() (err error) {
+	zhen.runCodeStep = 0
+	var codeCountStep = len(zhen.allCodeStepPointers)
+	if codeCountStep == 0 {
+		return
+	}
+	for {
+
+		s := zhen.allCodeStepPointers[zhen.runCodeStep]
+		err = zhen.codeStepRun(s)
+		if err != nil {
+			return err
+		}
+
+		zhen.runCodeStep += 1
+		if zhen.runCodeStep >= codeCountStep {
+			break
+		}
+	}
+	return
+
+}
+
+func (zhen *ZhenState) GetKeyWord(identifier string) (isKeyWord bool, keyWord ZhenValue, err error) {
+	value := zhen.GetGlobalVarValue("@关键字")
+	if value.valueType == ZhenValueTypeTable {
+
+		keyWord, isKeyWord = value.valueTable[identifier]
+
+	}
+
+	return
+}
+
+func (zhen *ZhenState) AddTextKeyWord(keyWord string) (err error) {
+	value := zhen.GetGlobalVarValue("@文本型关键字")
+	if value.valueType != ZhenValueTypeTable {
+		t := make(map[string]ZhenValue)
+		value = NewZhenValueTable(t)
+	}
+	value.valueTable[keyWord] = NewZhenValueFunction(KeyWordTextPreFun)
+
+	zhen.SetGlobalVarValue("@关键字", value)
+	return
+}
+
+func (zhen *ZhenState) AddKeyWord(keyWord KeyWord) (err error) {
+	globalVarName := "@关键字"
+
+	value := zhen.GetGlobalVarValue(globalVarName)
+	if value.valueType != ZhenValueTypeTable {
+		t := make(map[string]ZhenValue)
+		value = NewZhenValueTable(t)
+	}
+
+	value.valueTable[keyWord.Name] = KeyWordToZhenValue(keyWord)
+
+	zhen.SetGlobalVarValue(globalVarName, value)
+	return
+}
+func (zhen *ZhenState) LoadBaseCodePre() (err error) {
+
+	zhen.AddKeyWord(KeyWord{Name: "程序名", Type: KwtText, PreFun: KeyWordTextPreFun})
+	zhen.AddKeyWord(KeyWord{Name: "版本号", Type: KwtText, PreFun: KeyWordTextPreFun})
+	zhen.AddKeyWord(KeyWord{Name: "常量", Type: KwtConstant, PreFun: KeyWordConstantPreFun})
+	zhen.AddKeyWord(KeyWord{Name: "显示", Type: KwtFun, PreFun: KeyWordFunPreFun})
+
+	//zhen.AddTextKeyWord("版本号")
+	//zhen.AddKeyWordConstant("")
+
+	//value := zhen.GetGlobalVarValue("@文本型关键字")
+	//if value.valueType != ZhenValueTypeTable {
+	//	t := make(map[string]ZhenValue)
+	//	value = NewZhenValueTable(t)
+	//}
+	//value.valueTable["程序名"] = NewZhenValueFunction(KeyWordTextPreFun)
+	////key := "程序名"
+	////value := NewZhenValueFunction(ZhenStateSetGlobalValuesByChildCode)
+	//
+	//zhen.SetGlobalVarValue("@关键字", value)
+	return
+}
+
+func (zhen *ZhenState) Run2() (err error) {
 	zhen.runCodeStep = 0
 	var codeCountStep = len(zhen.allCodeStepPointers)
 	if codeCountStep == 0 {

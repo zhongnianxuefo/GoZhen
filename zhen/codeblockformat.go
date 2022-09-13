@@ -1,4 +1,4 @@
-package main
+package zhen
 
 import (
 	"os"
@@ -148,7 +148,7 @@ func (format *CodeBlockFormat) formatToString() (code string) {
 	return
 }
 
-func (format *CodeBlockFormat) formatToFile(path string) (err error) {
+func (format *CodeBlockFormat) FormatToFile(path string) (err error) {
 	f, err := os.Create(path)
 	if err != nil {
 		return

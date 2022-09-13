@@ -1,4 +1,4 @@
-package main
+package zhen
 
 type CodeBlockPos struct {
 	StartNo  int
@@ -53,15 +53,32 @@ const (
 	CbtComment
 )
 
+type CodeWordType int
+
+const (
+	CwtUnknown CodeWordType = iota
+	CwtKeyWord
+	CwtTxt
+	CwtConstant
+)
+
 type CodeBlock struct {
-	AllCodeChars []rune
-	Pos          CodeBlockPos
-	BlockType    CodeBlockType
-	Items        []*CodeBlock
-	ParCodeBlock *CodeBlock
+	AllCodeChars  []rune
+	Pos           CodeBlockPos
+	BlockType     CodeBlockType
+	Items         []*CodeBlock
+	ParCodeBlock  *CodeBlock
+	NextCodeBlock *CodeBlock
 
 	LineIndent int
 	Comment    string
+
+	//isKeyWord bool
+
+	Word         string
+	WordType     CodeWordType
+	codeSteps    []ZhenCodeStep
+	nextStepCode *CodeBlock
 }
 
 func NewCodeBlock(codeChars []rune, pos CodeBlockPos, codeBlockType CodeBlockType) (codeBlock *CodeBlock) {
@@ -107,4 +124,18 @@ func (codeBlock *CodeBlock) appendNext(nextCodeBlock *CodeBlock) *CodeBlock {
 func (codeBlock *CodeBlock) appendChild(child *CodeBlock) *CodeBlock {
 	codeBlock.addItem(child)
 	return child
+}
+
+func (codeBlock *CodeBlock) getNext() (next *CodeBlock, isExist bool) {
+	par := codeBlock.ParCodeBlock
+	parItemCount := len(par.Items)
+	for i, c := range par.Items {
+		if c == codeBlock {
+			if i < parItemCount-1 {
+				next = par.Items[i+1]
+				isExist = true
+			}
+		}
+	}
+	return
 }

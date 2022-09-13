@@ -1,31 +1,62 @@
 package main
 
 import (
+	"GoZhen/zhen"
 	"fmt"
 	"time"
 )
 
 func test(txtCodeFile string, xmlFile string, formatFile string) (err error) {
-	z := NewZhenState()
-	z.debug = false
+
+	start := time.Now()
+	z := zhen.NewZhenState()
+	//z.debug = false
 	err = z.LoadTxtFile(txtCodeFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	cost := time.Since(start)
+	fmt.Println("LoadTxtFile:", cost)
 
-	toXml := NewCodeBlockToXml(z.MainCodeBlock)
+	start = time.Now()
+	err = z.LoadBaseCodePre()
+	if err != nil {
+
+		return
+	}
+	codePre := zhen.NewCodePre(&z, z.MainCodeBlock)
+
+	err = codePre.Preprocess()
+
+	if err != nil {
+
+		return
+	}
+
+	cost = time.Since(start)
+	fmt.Println("Preprocess:", cost)
+
+	start = time.Now()
+
+	toXml := zhen.NewCodeBlockToXml(z.MainCodeBlock)
 	err = toXml.ToXmlFile(xmlFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	format := NewCodeBlockFormat(z.MainCodeBlock)
-	err = format.formatToFile(formatFile)
+	cost = time.Since(start)
+	fmt.Println("ToXml:", cost)
+
+	start = time.Now()
+	format := zhen.NewCodeBlockFormat(z.MainCodeBlock)
+	err = format.FormatToFile(formatFile)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
+	cost = time.Since(start)
+	fmt.Println("Format:", cost)
 	return
 }
 
@@ -52,41 +83,44 @@ func main() {
 <代码行><关键字>显示变量</关键字><变量名>C</变量名><代码 指令="显示变量" 变量名="C" /></代码行>
 </程序>
 `
-
-	err1 := test("Zhen/演示代码1.z1", "Zhen/格式化演示代码1.xml", "Zhen/格式化演示代码1.z1")
+	_ = codes
+	start := time.Now()
+	err1 := test("test/演示代码1.z1", "test/格式化演示代码1.xml", "test/格式化演示代码1.z1")
 	if err1 != nil {
 		fmt.Println(err1)
 		return
 	}
+	cost := time.Since(start)
+	fmt.Println("cost:", cost)
 
-	err2 := test("Zhen/格式化演示代码1.z1", "Zhen/格式化演示代码2.xml", "Zhen/格式化演示代码2.z1")
+	err2 := test("test/格式化演示代码1.z1", "test/格式化演示代码2.xml", "test/格式化演示代码2.z1")
 	if err2 != nil {
 		fmt.Println(err2)
 		return
 	}
 
-	//err = z.LoadTxtFile("Zhen/格式化演示代码1.z1")
+	//err = z.LoadTxtFile("zhen/格式化演示代码1.z1")
 	//if err != nil {
 	//	fmt.Println(err)
 	//}
-	//z.txtCode.formatToFile("Zhen/格式化演示代码2.z1")
-	//z.txtCode.ToXmlFile("Zhen/格式化演示代码2.xml")
-	z := NewZhenState()
-	z.debug = false
+	//z.txtCode.formatToFile("zhen/格式化演示代码2.z1")
+	//z.txtCode.ToXmlFile("zhen/格式化演示代码2.xml")
+	z := zhen.NewZhenState()
+	////z.debug = false
 	err := z.LoadString(codes)
-	//if err != nil {
-	//	fmt.Println(err)
-	//}
+	if err != nil {
+		fmt.Println(err)
+	}
 	fmt.Println("代码分析完成!")
 
-	start := time.Now()
+	start = time.Now()
 	for i := 1; i <= 1; i++ {
 		err = z.Run()
 	}
 
-	cost := time.Since(start)
+	cost = time.Since(start)
 	if err != nil {
-		fmt.Println(z.getRunInfo())
+		//fmt.Println(z.getRunInfo())
 		fmt.Println(err)
 	}
 	fmt.Println("cost:", cost)

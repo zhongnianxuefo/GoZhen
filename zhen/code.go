@@ -1,4 +1,4 @@
-package main
+package zhen
 
 import (
 	"github.com/beevik/etree"
@@ -194,7 +194,7 @@ func getCodeStepFromElement(item *etree.Element) (s ZhenCodeStep, err error) {
 		}
 	}
 	if needValue {
-		s.value, err = getZhenValueFromElement(item)
+		s.value, err = GetZhenValueFromElement(item)
 	}
 	return
 }

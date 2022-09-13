@@ -1,4 +1,4 @@
-package main
+package zhen
 
 import (
 	"errors"
@@ -51,6 +51,7 @@ func (analyze *TxtCodeAnalyze) AnalyzeCode() (err error) {
 		return
 	}
 	analyze.ClearEmptyCodeBlock(analyze.MainCode)
+	analyze.CheckLineColon(analyze.MainCode)
 
 	return
 }
@@ -524,7 +525,10 @@ func (analyze *TxtCodeAnalyze) FindSeparator(codeBlock *CodeBlock, separator Cod
 			CbtLeftSquareBracket, CbtRightSquareBracket,
 			CbtLeftBigBracket, CbtRightBigBracket:
 			enableCode = true
+		case CbtLine, CbtChildLine:
+			enableCode = true
 		}
+
 		if hasSeparator && enableCode {
 			check = true
 			return
@@ -606,7 +610,17 @@ func (analyze *TxtCodeAnalyze) getIndent(codeBlock *CodeBlock) (indent int) {
 
 	return
 }
-
+func (analyze *TxtCodeAnalyze) CheckLineColon(codeBlock *CodeBlock) {
+	if analyze.FindSeparator(codeBlock, CbtColon) {
+		analyze.SeparatorLineWithColon(codeBlock)
+	}
+	for _, c := range codeBlock.Items {
+		//switch c.BlockType {
+		//case CbtLine:
+		analyze.CheckLineColon(c)
+		//}
+	}
+}
 func (analyze *TxtCodeAnalyze) CheckLineIndent(codeBlock *CodeBlock) (err error) {
 	oldItems := codeBlock.Items
 	codeBlock.Items = []*CodeBlock{}
