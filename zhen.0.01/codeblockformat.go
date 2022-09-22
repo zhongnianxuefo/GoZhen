@@ -1,4 +1,4 @@
-package zhen
+package zhen_0_01
 
 import (
 	"os"
@@ -9,7 +9,7 @@ type CodeBlockFormatParameter struct {
 	MaxEmptyLine int
 }
 type CodeBlockFormat struct {
-	MainCodeBlock *CodeBlock
+	MainCodeBlock *CodeBlock2
 	Parameter     CodeBlockFormatParameter
 
 	AllWords []string
@@ -22,7 +22,7 @@ type CodeBlockFormat struct {
 	LastCodeBlockType CodeBlockType
 }
 
-func NewCodeBlockFormat(codeBlock *CodeBlock) (format CodeBlockFormat) {
+func NewCodeBlockFormat(codeBlock *CodeBlock2) (format CodeBlockFormat) {
 	format.MainCodeBlock = codeBlock
 	format.Parameter = CodeBlockFormatParameter{MaxEmptyLine: 3}
 	format.NowLine = 1
@@ -34,7 +34,7 @@ func NewCodeBlockFormat(codeBlock *CodeBlock) (format CodeBlockFormat) {
 	return
 }
 
-func (format *CodeBlockFormat) NewLine(block *CodeBlock) {
+func (format *CodeBlockFormat) NewLine(block *CodeBlock2) {
 	if block.Pos.LineNo > format.LastCodeLine {
 		line := block.Pos.LineNo - format.LastCodeLine
 		if line > format.Parameter.MaxEmptyLine {
@@ -70,7 +70,7 @@ func (format *CodeBlockFormat) NewLine(block *CodeBlock) {
 	return
 }
 
-func (format *CodeBlockFormat) AnalyseCodeBlock(block *CodeBlock) {
+func (format *CodeBlockFormat) AnalyseCodeBlock(block *CodeBlock2) {
 	//todo 换行 行首加tab等
 
 	format.NewLine(block)
@@ -123,7 +123,7 @@ func (format *CodeBlockFormat) AnalyseCodeBlock(block *CodeBlock) {
 
 	format.AllWords = append(format.AllWords, w)
 
-	for _, item := range block.Items {
+	for _, item := range block.items {
 		format.AnalyseCodeBlock(item)
 
 	}

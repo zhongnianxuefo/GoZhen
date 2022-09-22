@@ -1,0 +1,19 @@
+{
+ "Pos": {
+  "StartNo": 0,
+  "BlockLen": 0,
+  "LineNo": 1,
+  "LineCount": 1,
+  "ColNo": 1
+ },
+ "BlockType": 31,
+ "LineIndent": 0,
+ "Comment": "",
+ "Word": "",
+ "WordType": 0,
+ "Operator": {
+  "Name": "",
+  "Type": 0,
+  "Priority": 0
+ }
+}

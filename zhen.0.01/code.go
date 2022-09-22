@@ -1,4 +1,4 @@
-package zhen
+package zhen_0_01
 
 import (
 	"github.com/beevik/etree"
@@ -68,7 +68,7 @@ type ZhenCodeStep struct {
 	valueName2   string
 	tempValueNo1 int
 	tempValueNo2 int
-	value        ZhenValue
+	value        ZValue
 }
 
 type ZhenCodeWord struct {
@@ -194,7 +194,7 @@ func getCodeStepFromElement(item *etree.Element) (s ZhenCodeStep, err error) {
 		}
 	}
 	if needValue {
-		s.value, err = GetZhenValueFromElement(item)
+		//s.value, err = GetZhenValueFromElement(item)
 	}
 	return
 }
