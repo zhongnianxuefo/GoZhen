@@ -37,6 +37,7 @@ func NewCodeBlockFormat(codeFile *CodeFile) (format CodeBlockFormat) {
 
 func (format *CodeBlockFormat) NewLine(codeBlockNo int) {
 	block := &format.CodeFile.AllCodeBlock[codeBlockNo]
+
 	if block.Pos.LineNo > format.LastCodeLine {
 		line := block.Pos.LineNo - format.LastCodeLine
 		if line > format.Parameter.MaxEmptyLine {
@@ -68,7 +69,21 @@ func (format *CodeBlockFormat) NewLine(codeBlockNo int) {
 			format.LastCodeBlockType = CbtLine
 		}
 	}
-	format.LastCodeLine = block.Pos.LineNo + block.Pos.LineCount - 1
+	crlfCount := strings.Count(block.Chars, "\r\n")
+	crCount := strings.Count(block.Chars, "\r")
+	if crCount > crlfCount {
+		crlfCount = crCount
+	}
+	lfCount := strings.Count(block.Chars, "\r")
+	if lfCount > crlfCount {
+		crlfCount = lfCount
+	}
+	//if block.Pos.lineCount != crlfCount+1 {
+	//	fmt.Println(block.Pos.lineCount, crlfCount+1, format.parser.AllCodeBlock[codeBlockNo].Chars)
+	//}
+
+	//format.LastCodeLine = block.Pos.LineNo + block.Pos.lineCount - 1
+	format.LastCodeLine = block.Pos.LineNo + crlfCount
 	return
 }
 
@@ -133,7 +148,7 @@ func (format *CodeBlockFormat) AnalyseCodeBlock(codeBlockNo int) {
 	//
 	//}
 	//if block.BlockType == CbtLine {
-	//	format.AllWords = append(format.AllWords, "\n")
+	//	format.allWords = append(format.allWords, "\n")
 	//}
 	//n	else if block.TrailingEnter > 0 {
 	//		words = append(words, "\n")

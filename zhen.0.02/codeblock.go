@@ -5,7 +5,7 @@ type CodeBlockPos struct {
 	blockLen int
 
 	LineNo    int
-	LineCount int
+	lineCount int
 	ColNo     int
 }
 
@@ -104,6 +104,7 @@ type CodeWordType uint8
 
 const (
 	CwtUnSet CodeWordType = iota
+
 	CwtKeyWord
 	CwtTxt
 
@@ -111,10 +112,23 @@ const (
 	CwtVar
 	CwtGlobalVar
 	CwtLocalVar
+	CwtTempVar
 
 	CwtFunName
 	CwtFunPara
 	CwtFunReturn
+
+	CwtAs
+	CwtAdd
+	CwtSub
+	CwtMul
+	CwtDiv
+	CwtPoint
+
+	CwtInt
+	CwtFloat
+	CwtString
+	CWtBracket
 )
 
 var CodeWordTypeNames = [...]string{
@@ -125,9 +139,22 @@ var CodeWordTypeNames = [...]string{
 	CwtVar:       "变量",
 	CwtGlobalVar: "全局变量",
 	CwtLocalVar:  "局部变量",
+	CwtTempVar:   "局部变量",
 	CwtFunName:   "函数名",
 	CwtFunPara:   "参数",
 	CwtFunReturn: "返回值",
+
+	CwtAs:    "赋值",
+	CwtAdd:   "加",
+	CwtSub:   "减",
+	CwtMul:   "乘",
+	CwtDiv:   "除",
+	CwtPoint: "点",
+
+	CwtInt:     "整数",
+	CwtFloat:   "小数",
+	CwtString:  "字符串",
+	CWtBracket: "括号",
 }
 
 func (cwt CodeWordType) String() string {
@@ -216,6 +243,9 @@ const (
 	CstMul
 	CstDiv
 	CstPoint
+
+	CstCall
+	CstTryCall
 )
 
 var CodeStepTypeNames = [...]string{
@@ -235,6 +265,9 @@ var CodeStepTypeNames = [...]string{
 	CstMul:   "*",
 	CstDiv:   "/",
 	CstPoint: ".",
+
+	CstCall:    "运行函数",
+	CstTryCall: "尝试运行",
 }
 
 func (cst CodeStepType) String() string {
@@ -248,5 +281,6 @@ type CodeStep struct {
 	TempVarNo2   int
 	VarName2     string
 	ReturnVarNo  int
-	ValueString  string
+	ValueString1 string
+	ValueString2 string
 }

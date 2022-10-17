@@ -99,12 +99,12 @@ func (codePre *CodePre) LoadBaseCodePre() {
 	codePre.AddKeyWord(KeyWord{Name: "局部变量", PreFun: DefineLocalVarPreFun})
 	codePre.AddKeyWord(KeyWord{Name: "定义局部变量", PreFun: DefineLocalVarPreFun})
 
-	//codePre.AddKeyWord(KeyWord{Name: "如果", Type: KwtIf, PreFun: DefineVar})
-	//codePre.AddKeyWord(KeyWord{Name: "否则", Type: KwtElse, PreFun: DefineVar})
+	//codePre.addKeyWord(KeyWord{Names: "如果", TokenType: KwtIf, PreFun: DefineVar})
+	//codePre.addKeyWord(KeyWord{Names: "否则", TokenType: KwtElse, PreFun: DefineVar})
 	//
-	//codePre.AddKeyWord(KeyWord{Name: "循环", Type: KwtWhile, PreFun: DefineVar})
-	//codePre.AddKeyWord(KeyWord{Name: "按条件循环", Type: KwtWhile, PreFun: DefineVar})
-	//codePre.AddKeyWord(KeyWord{Name: "按次数循环", Type: KwtFor, PreFun: DefineVar})
+	//codePre.addKeyWord(KeyWord{Names: "循环", TokenType: KwtWhile, PreFun: DefineVar})
+	//codePre.addKeyWord(KeyWord{Names: "按条件循环", TokenType: KwtWhile, PreFun: DefineVar})
+	//codePre.addKeyWord(KeyWord{Names: "按次数循环", TokenType: KwtFor, PreFun: DefineVar})
 	//
 	codePre.AddKeyWord(KeyWord{Name: "定义函数", PreFun: DefineFunPreFun})
 	//

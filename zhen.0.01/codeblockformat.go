@@ -128,7 +128,7 @@ func (format *CodeBlockFormat) AnalyseCodeBlock(block *CodeBlock2) {
 
 	}
 	//if block.BlockType == CbtLine {
-	//	format.AllWords = append(format.AllWords, "\n")
+	//	format.allWords = append(format.allWords, "\n")
 	//}
 	//n	else if block.TrailingEnter > 0 {
 	//		words = append(words, "\n")

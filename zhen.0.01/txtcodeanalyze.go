@@ -632,7 +632,7 @@ func (analyze *TxtCodeAnalyze) CheckLineIndent(codeBlock *CodeBlock2) (err error
 		if analyze.CheckLineEmpty(c, true) {
 			//codeBlock.addItem(c)
 			//} else if analyze.checkLineEmpty(c, false) {
-			//	c.LineIndent = lastLine.LineIndent
+			//	c.lineIndent = lastLine.lineIndent
 			//	codeBlock.addItem(c)
 		} else {
 			c.LineIndent = analyze.getIndent(c)

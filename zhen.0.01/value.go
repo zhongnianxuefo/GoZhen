@@ -41,9 +41,9 @@ type ZNone bool
 type ZInt int
 type ZFloat float64
 
-//type ZArray []ValueString
+//type ZArray []ValueString1
 
-//type ZObject []ValueString
+//type ZObject []ValueString1
 
 //type ZhenValueTable map[string]ZhenValue
 
@@ -148,7 +148,7 @@ const None = ZNone(false)
 //				v.valueNumber = v1.valueNumber / v2.valueNumber
 //			}
 //		} else {
-//			err = errors.New("只有数字类型可以进行四则运算")
+//			err = errors.Copy("只有数字类型可以进行四则运算")
 //			return
 //		}
 //
@@ -164,7 +164,7 @@ const None = ZNone(false)
 //			case ZCS_Ne, ZCS_TNe, ZCS_TTNe:
 //				v.valueBool = vv1 != vv2
 //			default:
-//				err = errors.New("布尔类型不能进行大小比较")
+//				err = errors.Copy("布尔类型不能进行大小比较")
 //				return
 //			}
 //
@@ -202,7 +202,7 @@ const None = ZNone(false)
 //			}
 //		} else {
 //			//todo 其他类型的比较待定
-//			err = errors.New("比较类型未定义")
+//			err = errors.Copy("比较类型未定义")
 //			return
 //		}
 //
@@ -220,7 +220,7 @@ const None = ZNone(false)
 //
 //			}
 //		} else {
-//			err = errors.New("只有布尔类型可以进行比较运算")
+//			err = errors.Copy("只有布尔类型可以进行比较运算")
 //			return
 //		}
 //	} else if isSingleBool {
@@ -228,7 +228,7 @@ const None = ZNone(false)
 //			v.valueType = ZvtBool
 //			v.valueBool = !v1.valueBool
 //		} else {
-//			err = errors.New("只有布尔类型可以进行非运算")
+//			err = errors.Copy("只有布尔类型可以进行非运算")
 //			return
 //		}
 //	}
@@ -265,7 +265,7 @@ const None = ZNone(false)
 //		pc := reflect.ValueOf(v.Function).Pointer()
 //		f := runtime.FuncForPC(pc)
 //		file, line := f.FileLine(pc)
-//		return fmt.Sprintf("go function %s %s:%d", f.Name(), file, line)
+//		return fmt.Sprintf("go function %s %s:%d", f.Names(), file, line)
 //	case *userData:
 //		return fmt.Sprintf("userdata %#v", v)
 //	case nil:
@@ -273,7 +273,7 @@ const None = ZNone(false)
 //	case bool:
 //		return fmt.Sprintf("%#v", v)
 //	}
-//	return fmt.Sprintf("unknown %#v %s", v, reflect.TypeOf(v).Name())
+//	return fmt.Sprintf("unknown %#v %s", v, reflect.TypeOf(v).Names())
 //}
 func ZhenValueToString(v interface{}) (s string) {
 
@@ -333,7 +333,7 @@ func ZhenValueToString(v interface{}) (s string) {
 //	} else if valueType == "数字" {
 //		n, e := strconv.ParseFloat(value, 64)
 //		if e != nil {
-//			err = errors.New("解析错误:不能把文本转换为数字")
+//			err = errors.Copy("解析错误:不能把文本转换为数字")
 //			return
 //		}
 //		v = NewZhenValueNumber(ZFloat(n))

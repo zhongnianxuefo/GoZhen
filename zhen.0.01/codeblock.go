@@ -183,7 +183,7 @@ func NewCodeBlock(codeChars []rune, pos CodeBlockPos, codeBlockType CodeBlockTyp
 	codeBlock.allCodeChars = codeChars
 	codeBlock.Pos = pos
 	codeBlock.BlockType = codeBlockType
-	//codeBlock.LineIndent = 0
+	//codeBlock.lineIndent = 0
 
 	codeBlock.keyWords = NewVarGroup()
 	codeBlock.operators = NewVarGroup()

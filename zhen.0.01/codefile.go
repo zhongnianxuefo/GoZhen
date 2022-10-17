@@ -98,7 +98,7 @@ func NewCodeFile(codeTxt string) (codeFile *CodeFile) {
 
 	codeFile.nowBlock = codeFile.newCodeBlock(codeFile.NowPos, CbtFile)
 
-	//codeBlock.Pos = CodeBlockPos{startNo: 0, blockLen: 0, LineNo: 1, LineCount: 1, ColNo: 1}
+	//codeBlock.Pos = CodeBlockPos{startNo: 0, blockLen: 0, LineNo: 1, lioneCount: 1, ColNo: 1}
 	//codeBlock.BlockType = CbtFile
 	//codeBlock.ParNo = 0
 	//codeBlock.FirstChildNo = -1
@@ -155,7 +155,7 @@ func NewCodeFileFromGobFile(gobFile string) (codeFile *CodeFile, err error) {
 	//if err != nil {
 	//	return
 	//}
-	//codeFile = &CodeFile{}
+	//codeFile = &parser{}
 	//err = json.Unmarshal(data, &codeFile)
 	//if err != nil {
 	//	return
@@ -1001,7 +1001,7 @@ func (codeFile *CodeFile) ToXmlElement(codeBlockNo int, element *etree.Element) 
 		e.CreateAttr("len", strconv.Itoa(codeBlock.Pos.BlockLen))
 
 		if codeBlock.LineIndent > 0 {
-			e.CreateAttr("LineIndent", strconv.Itoa(codeBlock.LineIndent))
+			e.CreateAttr("lineIndent", strconv.Itoa(codeBlock.LineIndent))
 		}
 		//for _, c := range codeBlock.cod {
 		//	codeFile.codeBlockToXmlElement(c, e)
@@ -1122,7 +1122,7 @@ func (codeFile *CodeFile) CheckLineIndent(codeBlockNo int) (err error) {
 		if codeFile.CheckLineEmpty(n, true) {
 			//codeBlock.addItem(c)
 			//} else if analyze.checkLineEmpty(c, false) {
-			//	c.LineIndent = lastLine.LineIndent
+			//	c.lineIndent = lastLine.lineIndent
 			//	codeBlock.addItem(c)
 		} else {
 			c.LineIndent = codeFile.getIndent(n)
@@ -1134,7 +1134,7 @@ func (codeFile *CodeFile) CheckLineIndent(codeBlockNo int) (err error) {
 			} else {
 				if lastLine.LineIndent < c.LineIndent {
 					codeFile.addChildCodeBlock(codeBlockIndents[lastLine.LineIndent], n)
-					//codeBlockIndents[lastLine.LineIndent].addItem(c)
+					//codeBlockIndents[lastLine.lineIndent].addItem(c)
 					codeBlockIndents[c.LineIndent] = n
 				} else {
 					_, ok := codeBlockIndents[c.LineIndent]
@@ -1144,7 +1144,7 @@ func (codeFile *CodeFile) CheckLineIndent(codeBlockNo int) (err error) {
 						return errors.New(err)
 					}
 					codeFile.addNextCodeBlock(codeBlockIndents[c.LineIndent], n)
-					//codeBlockIndents[c.LineIndent].appendNext(c)
+					//codeBlockIndents[c.lineIndent].appendNext(c)
 					codeBlockIndents[c.LineIndent] = n
 				}
 			}

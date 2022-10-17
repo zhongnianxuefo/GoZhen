@@ -2,6 +2,7 @@ package zhen_0_02
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -13,133 +14,169 @@ type KeyWord struct {
 type CodePre struct {
 	fileCode *CodeFile
 
-	nowCodeBlockNo   int
+	//nowCodeBlockNo   int
 	mainCodeBlock    *CodeBlock
 	nowLineCodeBlock *CodeBlock
 	AllKeyWords      map[string]KeyWordType
 	AllOperators     map[string]Operator
 
-	tempVarNo   int
-	tempVarUses map[*CodeBlock]interface{}
+	tempVarNo  map[*CodeBlock]int
+	tempVarMap map[*CodeBlock]interface{}
 
-	//state         *ZhenState
+	//state         *State
 }
 
 func NewCodePP(code *CodeFile) (codePP CodePre) {
 	codePP.fileCode = code
 	codePP.AllKeyWords = make(map[string]KeyWordType)
 	codePP.AllOperators = make(map[string]Operator)
-	codePP.mainCodeBlock = &codePP.fileCode.AllCodeBlock[0]
+	codePP.mainCodeBlock = codePP.getCodeBlock(0)
 
-	codePP.LoadBaseKeyWord()
-	codePP.LoadBaseOperator()
+	codePP.tempVarNo = make(map[*CodeBlock]int)
+	codePP.tempVarMap = make(map[*CodeBlock]interface{})
 
-	//codePP.newArea(0)
-	//codePre.NowFunCodeBlock = codePre.FileCodeBlock
-	//codePre.LoadBaseCodePre()
-	//codePre.LoadBaseGoFun()
-	//codePre.LoadBaseOperator()
-	//codePre.state = state
+	codePP.loadBaseKeyWord()
+	codePP.loadBaseOperator()
 
 	return
 }
-func (codePre *CodePre) newArea(codeNo int) {
-	//varNames := NewVarNames()
-	//varNames.AddVar(CodeVarKey{Name: "test", Type: CvtKeyWords})
-	//codePre.fileCode.AllVarNames = append(codePre.fileCode.AllVarNames, varNames)
-	//varNames := codePre.fileCode.AllVarNames[codeNo]
-	//
-	//codePre.fileCode.AllVarNames[codeNo] = varNames
-	//codePre.NowFunCodeBlock = codePre.FileCodeBlock
-	//codePre.LoadBaseCodePre()
-	//codePre.LoadBaseGoFun()
-	//codePre.LoadBaseOperator()
-	//codePre.state = state
+func (codePre *CodePre) getCodeBlock(n int) (codeBlock *CodeBlock) {
+	codeBlock = &codePre.fileCode.AllCodeBlock[n]
+	return
+}
+func (codePre *CodePre) getCodeBlockArea(codeBlock *CodeBlock) (codeBlockArea *CodeBlock) {
+	if codeBlock.ParNo >= 0 {
+		parCodeBlock := codePre.getCodeBlock(codeBlock.ParNo)
+		switch parCodeBlock.BlockType {
+		case CbtFile, CbtFun:
+			codeBlockArea = parCodeBlock
+		case CbtLine, CbtChildLine, CbtColon:
+			codeBlockArea = parCodeBlock
+		default:
+			codeBlockArea = codePre.getCodeBlockArea(parCodeBlock)
+		}
+	}
+	return
+}
+
+func (codePre *CodePre) getCodeBlockArea2(codeBlock *CodeBlock) (codeBlockArea *CodeBlock) {
+	switch codeBlock.BlockType {
+	case CbtFile, CbtFun:
+		codeBlockArea = codeBlock
+	default:
+		parCodeBlock := codePre.getCodeBlock(codeBlock.ParNo)
+		if parCodeBlock != nil {
+			codeBlockArea = codePre.getCodeBlockArea(parCodeBlock)
+		}
+	}
+	return
+}
+
+func (codePre *CodePre) addCodeStep(codeBlock *CodeBlock, step CodeStep) {
+	parCodeBlock := codePre.getCodeBlockArea(codeBlock)
+	if parCodeBlock != nil {
+		parCodeBlock.Steps = append(parCodeBlock.Steps, step)
+	}
+
+	return
+}
+
+func (codePre *CodePre) getNextEnableCodeBlock(codeBlock *CodeBlock) (nextEnableCodeBlock *CodeBlock) {
+	if codeBlock.NextNo >= 0 {
+		nextCodeBlock := codePre.getCodeBlock(codeBlock.NextNo)
+		switch nextCodeBlock.BlockType {
+		case CbtLetter:
+			nextEnableCodeBlock = nextCodeBlock
+		case CbtNumber, CbtString:
+			nextEnableCodeBlock = nextCodeBlock
+		case CbtOperator, CbtPoint:
+			nextEnableCodeBlock = nextCodeBlock
+		case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+			nextEnableCodeBlock = nextCodeBlock
+		default:
+			nextEnableCodeBlock = codePre.getNextEnableCodeBlock(nextCodeBlock)
+		}
+	}
+
 	return
 }
 
 func (codePre *CodePre) Preprocess() (err error) {
-
-	err = codePre.CodePreprocess(0)
+	err = codePre.CodePreprocess(codePre.mainCodeBlock)
 	if err != nil {
 		return
 	}
-	//codePre.FileCodeBlock = block
-	//for _, code := range codePre.FileCodeBlock.items {
-	//
-	//	//codePre.NowLineCodeBlock = code
-	//
-	//	err = codePre.CodePre(code)
-	//	if err != nil {
-	//		return
-	//	}
-	//}
+
 	return
 }
-func (codePre *CodePre) AddKeyWord(keyWord string, keyWordType KeyWordType) {
+
+func (codePre *CodePre) addKeyWord(keyWord string, keyWordType KeyWordType) {
 	codePre.AllKeyWords[keyWord] = keyWordType
 
 }
 
-func (codePre *CodePre) GetKeyWord(keyWord string) (keyWordType KeyWordType, ok bool) {
+func (codePre *CodePre) getKeyWord(keyWord string) (keyWordType KeyWordType, ok bool) {
 	keyWordType, ok = codePre.AllKeyWords[keyWord]
 	return
 }
-func (codePre *CodePre) AddOperator(opeName string, opeType OperatorType, opePriority int) {
+
+func (codePre *CodePre) addOperator(opeName string, opeType OperatorType, opePriority int) {
 	ope := Operator{Type: opeType, Priority: opePriority}
 	codePre.AllOperators[opeName] = ope
 }
-func (codePre *CodePre) GetOperator(opeName string) (operator Operator, ok bool) {
+
+func (codePre *CodePre) getOperator(opeName string) (operator Operator, ok bool) {
 	operator, ok = codePre.AllOperators[opeName]
 	return
 }
 
-func (codePre *CodePre) LoadBaseKeyWord() {
-	codePre.AddKeyWord("程序名", KwtDefineText)
-	codePre.AddKeyWord("版本号", KwtDefineText)
+func (codePre *CodePre) loadBaseKeyWord() {
+	codePre.addKeyWord("程序名", KwtDefineText)
+	codePre.addKeyWord("版本号", KwtDefineText)
 
-	codePre.AddKeyWord("定义", KwtDefineVar)
+	codePre.addKeyWord("定义", KwtDefineVar)
 
-	codePre.AddKeyWord("常量", KwtDefineConstant)
-	codePre.AddKeyWord("定义常量", KwtDefineConstant)
+	codePre.addKeyWord("常量", KwtDefineConstant)
+	codePre.addKeyWord("定义常量", KwtDefineConstant)
 
-	codePre.AddKeyWord("变量", KwtDefineVar)
-	codePre.AddKeyWord("定义变量", KwtDefineVar)
+	codePre.addKeyWord("变量", KwtDefineVar)
+	codePre.addKeyWord("定义变量", KwtDefineVar)
 
-	codePre.AddKeyWord("全局变量", KwtDefineGlobalVar)
-	codePre.AddKeyWord("定义全局变量", KwtDefineGlobalVar)
+	codePre.addKeyWord("全局变量", KwtDefineGlobalVar)
+	codePre.addKeyWord("定义全局变量", KwtDefineGlobalVar)
 
-	codePre.AddKeyWord("局部变量", KwtDefineLocalVar)
-	codePre.AddKeyWord("定义局部变量", KwtDefineLocalVar)
+	codePre.addKeyWord("局部变量", KwtDefineLocalVar)
+	codePre.addKeyWord("定义局部变量", KwtDefineLocalVar)
 
-	codePre.AddKeyWord("如果", KwtIf)
-	codePre.AddKeyWord("否则", KwtElse)
+	codePre.addKeyWord("如果", KwtIf)
+	codePre.addKeyWord("否则", KwtElse)
 
-	codePre.AddKeyWord("循环", KwtWhile)
-	codePre.AddKeyWord("按条件循环", KwtWhile)
-	codePre.AddKeyWord("按次数循环", KwtFor)
+	codePre.addKeyWord("循环", KwtWhile)
+	codePre.addKeyWord("按条件循环", KwtWhile)
+	codePre.addKeyWord("按次数循环", KwtFor)
 
-	codePre.AddKeyWord("定义函数", KwtDefineFun)
-	codePre.AddKeyWord("参数", KwtDefineFunPara)
-	codePre.AddKeyWord("返回", KwtDefineFunReturn)
+	codePre.addKeyWord("定义函数", KwtDefineFun)
+	codePre.addKeyWord("参数", KwtDefineFunPara)
+	codePre.addKeyWord("返回", KwtDefineFunReturn)
 
-	codePre.AddKeyWord("运行", KwtCallFun)
+	codePre.addKeyWord("运行", KwtCallFun)
+	codePre.addKeyWord("显示", KwtCallFun)
 
 	return
 }
 
-func (codePre *CodePre) LoadBaseOperator() {
+func (codePre *CodePre) loadBaseOperator() {
 
-	codePre.AddOperator("=", OtAs, 10)
-	codePre.AddOperator("+", OtAdd, 20)
-	codePre.AddOperator("-", OtSub, 20)
-	codePre.AddOperator("*", OtMul, 30)
-	codePre.AddOperator("/", OtDiv, 30)
-	codePre.AddOperator(".", OtPoint, 50)
+	codePre.addOperator("=", OtAs, 10)
+	codePre.addOperator("+", OtAdd, 20)
+	codePre.addOperator("-", OtSub, 20)
+	codePre.addOperator("*", OtMul, 30)
+	codePre.addOperator("/", OtDiv, 30)
+	codePre.addOperator(".", OtPoint, 50)
 
 }
 func (codePre *CodePre) getOperatorResultNo(codeBlock *CodeBlock) (no int, ok bool) {
-	item, ok := codePre.tempVarUses[codeBlock]
+	item, ok := codePre.tempVarMap[codeBlock]
 	if ok {
 		switch value := item.(type) {
 		case int:
@@ -153,7 +190,7 @@ func (codePre *CodePre) getOperatorResultNo(codeBlock *CodeBlock) (no int, ok bo
 }
 
 func (codePre *CodePre) changeOperatorResultNo(codeBlock *CodeBlock, resultCodeBlock *CodeBlock) {
-	item, ok := codePre.tempVarUses[codeBlock]
+	item, ok := codePre.tempVarMap[codeBlock]
 	if ok {
 		switch value := item.(type) {
 		case *CodeBlock:
@@ -162,12 +199,12 @@ func (codePre *CodePre) changeOperatorResultNo(codeBlock *CodeBlock, resultCodeB
 			return
 		}
 	}
-	codePre.tempVarUses[codeBlock] = resultCodeBlock
+	codePre.tempVarMap[codeBlock] = resultCodeBlock
 
 	return
 }
 
-func (codePre *CodePre) addOperatorCodeStep(leftVar *CodeBlock, operator *CodeBlock, rightVar *CodeBlock, returnTempNo int) {
+func (codePre *CodePre) addCodeStepOperator(leftVar *CodeBlock, operator *CodeBlock, rightVar *CodeBlock, resultVarNo int) {
 
 	step := CodeStep{}
 	switch operator.Operator.Type {
@@ -183,11 +220,12 @@ func (codePre *CodePre) addOperatorCodeStep(leftVar *CodeBlock, operator *CodeBl
 		step.CodeStepType = CstDiv
 	case OtPoint:
 		step.CodeStepType = CstPoint
+	case OtUnSet:
+		step.CodeStepType = CstTryCall
 	}
-	codePre.tempVarUses[operator] = returnTempNo
+
 	if leftVar != nil {
 		tempVar, ok := codePre.getOperatorResultNo(leftVar)
-		codePre.changeOperatorResultNo(leftVar, operator)
 
 		if ok {
 			step.TempVarNo1 = tempVar
@@ -196,15 +234,16 @@ func (codePre *CodePre) addOperatorCodeStep(leftVar *CodeBlock, operator *CodeBl
 			case CbtLetter:
 				step.VarName1 = leftVar.Chars
 			case CbtString, CbtNumber:
-				step.TempVarNo1 = returnTempNo + 1
-				codePre.setTempValue(step.TempVarNo1, leftVar)
+				//step.TempVarNo1 = resultVarNo + 1
+				step.ValueString1 = leftVar.Chars
+				//codePre.setTempValue(step.TempVarNo1, leftVar)
 			}
 
 		}
 	}
 	if rightVar != nil {
 		tempVar, ok := codePre.getOperatorResultNo(rightVar)
-		codePre.changeOperatorResultNo(rightVar, operator)
+
 		if ok {
 			step.TempVarNo2 = tempVar
 		} else {
@@ -212,43 +251,51 @@ func (codePre *CodePre) addOperatorCodeStep(leftVar *CodeBlock, operator *CodeBl
 			case CbtLetter:
 				step.VarName2 = rightVar.Chars
 			case CbtString, CbtNumber:
-				step.TempVarNo2 = returnTempNo + 2
-				codePre.setTempValue(step.TempVarNo2, rightVar)
+				step.ValueString2 = rightVar.Chars
+				//step.TempVarNo2 = resultVarNo + 2
+				//codePre.setTempValue(step.TempVarNo2, rightVar)
 			}
 		}
 	}
-	step.ReturnVarNo = returnTempNo
-
-	//codePre.tempVarNo = step.ReturnVarNo
-	//fmt.Println(leftUseTempVar, rightUseTempVar, step)
-	codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
-
+	step.ReturnVarNo = resultVarNo
+	if leftVar != nil && leftVar != operator {
+		codePre.changeOperatorResultNo(leftVar, operator)
+	}
+	if rightVar != nil && rightVar != operator {
+		codePre.changeOperatorResultNo(rightVar, operator)
+	}
+	codePre.tempVarMap[operator] = resultVarNo
+	codePre.addCodeStep(operator, step)
+	//codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
 }
 
-func (codePre *CodePre) getCodeBlockOperatorPriorities(codeBlock *CodeBlock) (priorities []int) {
+func (codePre *CodePre) getOperatorPriorities(codeBlock *CodeBlock) (priorities []int) {
 	priorityMap := make(map[int]bool)
 	childNo := codeBlock.FirstChildNo
 	for childNo >= 0 {
-		childCodeBlock := &codePre.fileCode.AllCodeBlock[childNo]
-		if childCodeBlock.Operator.Type != OtUnSet {
-			p := childCodeBlock.Operator.Priority
-			_, ok := priorityMap[p]
-			if !ok {
-				priorityMap[p] = true
-				priorities = append(priorities, p)
-			}
+		childCodeBlock := codePre.getCodeBlock(childNo)
+
+		p := childCodeBlock.Operator.Priority
+		_, ok := priorityMap[p]
+		if !ok {
+			priorityMap[p] = true
+			priorities = append(priorities, p)
 		}
+
 		childNo = childCodeBlock.NextNo
 	}
 	return
 }
-func (codePre *CodePre) checkCodeBlockAddOperatorCodeStep(codeBlock *CodeBlock, priority int) {
+func (codePre *CodePre) checkOperatorCodeStep(codeBlock *CodeBlock, priority int) {
 	if codeBlock == nil {
 		return
 	}
 	var leftVar *CodeBlock
 	var operator *CodeBlock
 	var rightVar *CodeBlock
+	var nextCheck *CodeBlock
+	//leftUseTemp :=false
+	//rightUseTemp :=true
 
 	switch codeBlock.BlockType {
 	case CbtLetter, CbtString, CbtNumber:
@@ -259,78 +306,121 @@ func (codePre *CodePre) checkCodeBlockAddOperatorCodeStep(codeBlock *CodeBlock, 
 		operator = codeBlock
 	}
 	if operator == nil {
-		if codeBlock.NextNo >= 0 {
-			codeBlock = &codePre.fileCode.AllCodeBlock[codeBlock.NextNo]
-			switch codeBlock.BlockType {
+		nextCodeBlock := codePre.getNextEnableCodeBlock(codeBlock)
+		if nextCodeBlock != nil {
+			switch nextCodeBlock.BlockType {
 			case CbtOperator, CbtPoint:
-				operator = codeBlock
+				operator = nextCodeBlock
+				codeBlock = nextCodeBlock
 			}
 		}
 	}
 	if operator != nil {
-		if codeBlock.NextNo >= 0 {
-			codeBlock = &codePre.fileCode.AllCodeBlock[codeBlock.NextNo]
-			switch codeBlock.BlockType {
+		nextCodeBlock := codePre.getNextEnableCodeBlock(codeBlock)
+		if nextCodeBlock != nil {
+			switch nextCodeBlock.BlockType {
 			case CbtLetter, CbtString, CbtNumber:
-				rightVar = codeBlock
+				rightVar = nextCodeBlock
+				//codeBlock = nextCodeBlock
 			case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
-				rightVar = codeBlock
+				rightVar = nextCodeBlock
+				//codeBlock = nextCodeBlock
 			}
+		}
+		if operator.Operator.Priority == priority {
+			codePre.tempVarNo[codePre.getCodeBlockArea(operator)] += 1
+			returnVarNo := codePre.tempVarNo[codePre.getCodeBlockArea(operator)]
+			codePre.addCodeStepOperator(leftVar, operator, rightVar, returnVarNo)
+		}
+		if rightVar != nil {
+			nextCheck = rightVar
+		} else {
+			nextCheck = codeBlock
 		}
 	}
 
-	if operator != nil && operator.Operator.Priority == priority {
-		codePre.tempVarNo += 1
-		returnVarNo := codePre.tempVarNo
-		codePre.addOperatorCodeStep(leftVar, operator, rightVar, returnVarNo)
+	if leftVar != nil && operator == nil {
 
+		nextCodeBlock := codePre.getNextEnableCodeBlock(codeBlock)
+		if nextCodeBlock != nil {
+			switch nextCodeBlock.BlockType {
+			case CbtLetter, CbtString, CbtNumber:
+				rightVar = nextCodeBlock
+				//codeBlock = nextCodeBlock
+			case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+				rightVar = nextCodeBlock
+				//codeBlock = nextCodeBlock
+			}
+		}
+		if priority == 0 {
+			codePre.tempVarNo[codePre.getCodeBlockArea(leftVar)] += 1
+			returnVarNo := codePre.tempVarNo[codePre.getCodeBlockArea(leftVar)]
+			codePre.addCodeStepOperator(leftVar, leftVar, rightVar, returnVarNo)
+		}
+
+		nextCheck = nextCodeBlock
 	}
-	if rightVar != nil {
-		codePre.checkCodeBlockAddOperatorCodeStep(rightVar, priority)
+
+	if nextCheck != nil {
+
+		codePre.checkOperatorCodeStep(nextCheck, priority)
 	}
 
 }
-func (codePre *CodePre) CodePreprocess(codeBlockNo int) (err error) {
 
-	codePre.nowCodeBlockNo = codeBlockNo
-	codeBlock := &codePre.fileCode.AllCodeBlock[codePre.nowCodeBlockNo]
-	if codeBlock.BlockType == CbtLine {
-		codePre.nowLineCodeBlock = codeBlock
-		codePre.tempVarNo = 0
-		codePre.tempVarUses = make(map[*CodeBlock]interface{})
+func (codePre *CodePre) CheckLineCodeBlock(codeBlock *CodeBlock) {
+	if codeBlock != nil {
+		if codeBlock.BlockType == CbtLine {
+			codePre.nowLineCodeBlock = codeBlock
+
+			//codePre.tempVarNo[codeBlock] = 0 //= make(map[*CodeBlock]int)
+			//codePP.tempVarMap = make(map[*CodeBlock]interface{})
+
+			//parCodeBlock := codePre.getCodeBlock(codeBlock.ParNo)
+			//if parCodeBlock != nil {
+			//	switch parCodeBlock.BlockType {
+			//	case CbtFile, CbtFun:
+			//		codePre.nowLineCodeBlock = codeBlock
+			//		codePre.tempVarNo = 0
+			//		codePre.tempVarMap = make(map[*CodeBlock]interface{})
+			//	}
+			//}
+		}
 	}
-	//fmt.Println(codeBlock.Pos, codeBlock.getChars(), codeBlock.WordType)
-	//codePre.state.NowCodeBlock = codeBlock
+	return
+}
+func (codePre *CodePre) CodePreprocess(codeBlock *CodeBlock) (err error) {
+	codePre.CheckLineCodeBlock(codeBlock)
+
 	if codeBlock.WordType == CwtUnSet {
 		switch codeBlock.BlockType {
 		case CbtLetter:
-			codePre.CheckLetter(codeBlockNo)
+			codePre.checkLetter(codeBlock)
 		case CbtNumber:
+			codePre.checkNumber(codeBlock)
 		case CbtString:
+			codePre.checkString(codeBlock)
 		case CbtOperator, CbtPoint:
-			codePre.CheckOperator(codeBlock)
+			codePre.checkOperator(codeBlock)
+		case CbtLeftBracket, CbtLeftSquareBracket, CbtLeftBigBracket:
+			codePre.checkBracket(codeBlock)
 		}
 	}
 	childNo := codeBlock.FirstChildNo
 	for childNo >= 0 {
-		err = codePre.CodePreprocess(childNo)
-		childNo = codePre.fileCode.AllCodeBlock[childNo].NextNo
+		child := codePre.getCodeBlock(childNo)
+		err = codePre.CodePreprocess(child)
+		childNo = child.NextNo
 
 	}
-
-	//tt := 1
-	//lastPriority := 0
-	//leftUseTempVar := 0
-	//rightUseTempVar := 0
-	operatorPriorities := codePre.getCodeBlockOperatorPriorities(codeBlock)
+	codePre.CheckLineCodeBlock(codeBlock)
+	operatorPriorities := codePre.getOperatorPriorities(codeBlock)
 	if len(operatorPriorities) > 0 {
 		sort.Sort(sort.Reverse(sort.IntSlice(operatorPriorities)))
+		childCodeBlock := codePre.getCodeBlock(codeBlock.FirstChildNo)
 		for _, p := range operatorPriorities {
-			childCodeBlock := &codePre.fileCode.AllCodeBlock[codeBlock.FirstChildNo]
-			codePre.checkCodeBlockAddOperatorCodeStep(childCodeBlock, p)
-
+			codePre.checkOperatorCodeStep(childCodeBlock, p)
 		}
-		childCodeBlock := &codePre.fileCode.AllCodeBlock[codeBlock.FirstChildNo]
 		codePre.changeOperatorResultNo(codeBlock, childCodeBlock)
 
 	}
@@ -341,19 +431,25 @@ func (codePre *CodePre) CodePreprocess(codeBlockNo int) (err error) {
 }
 func (codePre *CodePre) setTempValue(tempValueNo int, codeBlock *CodeBlock) {
 	step := CodeStep{}
-	step.ValueString = codeBlock.Chars
+	step.ValueString1 = codeBlock.Chars
 	step.TempVarNo1 = tempValueNo
 	step.CodeStepType = CstAs
-	codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
+
+	codePre.addCodeStep(codeBlock, step)
+	//codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
 	return
 }
 
-func (codePre *CodePre) CheckLetter(codeBlockNo int) (err error) {
-	codeBlock := &codePre.fileCode.AllCodeBlock[codeBlockNo]
+func (codePre *CodePre) checkLetter(codeBlock *CodeBlock) (err error) {
 
 	check := false
 	if !check {
-		check = codePre.CheckIsKeyWord(codeBlock)
+		check = codePre.isKeyWord(codeBlock)
+	}
+
+	if !check {
+		check = codePre.isConstant(codeBlock)
+
 	}
 	//if !check {
 	//	check = codePre.CheckIsLocalVarName(codeBlock, codeBlock.getCodeArea())
@@ -363,10 +459,7 @@ func (codePre *CodePre) CheckLetter(codeBlockNo int) (err error) {
 	//	check = codePre.CheckIsGlobalVarName(codeBlock, codeBlock.getCodeArea())
 	//
 	//}
-	//if !check {
-	//	check = codePre.CheckIsConstantVarName(codeBlock, codeBlock.getCodeArea())
-	//
-	//}
+
 	//if !check {
 	//	check = codePre.CheckIsFunName(codeBlock, codeBlock.getCodeArea())
 	//
@@ -383,12 +476,16 @@ func (codePre *CodePre) CheckLetter(codeBlockNo int) (err error) {
 	//_ = keyWord
 	return
 }
-func (codePre *CodePre) CheckIsKeyWord(codeBlock *CodeBlock) (check bool) {
+
+func (codePre *CodePre) isConstant(codeBlock *CodeBlock) (check bool) {
+	//identifier := codeBlock.Chars
+	//keyWordType, ok := codePre.getKeyWord(identifier)
+	return
+}
+func (codePre *CodePre) isKeyWord(codeBlock *CodeBlock) (check bool) {
 	identifier := codeBlock.Chars
-	keyWordType, ok := codePre.GetKeyWord(identifier)
-
+	keyWordType, ok := codePre.getKeyWord(identifier)
 	if ok {
-
 		codeBlock.WordType = CwtKeyWord
 		switch keyWordType {
 		case KwtDefineText:
@@ -407,29 +504,50 @@ func (codePre *CodePre) CheckIsKeyWord(codeBlock *CodeBlock) (check bool) {
 			codePre.DefineVar(codeBlock, CwtFunPara)
 		case KwtDefineFunReturn:
 			codePre.DefineVar(codeBlock, CwtFunReturn)
+		case KwtCallFun:
+			codePre.DefineCallFun(codeBlock)
 		}
 
-		//keyWord.PreFun(codePre)
-		//_ = keyWord
 		check = true
 	}
 
 	return
 }
 
+func (codePre *CodePre) DefineCallFun(codeBlock *CodeBlock) {
+
+	//
+	//nextNo := codeBlock.NextNo
+	//for nextNo >= 0 {
+	//	nextCodeBlock := codePre.getCodeBlock(nextNo)
+	//	switch nextCodeBlock {
+	//
+	//
+	//	}
+	//	if nextCodeBlock.BlockType == CbtColon {
+	//		step := CodeStep{}
+	//		step.CodeStepType = CstDefineText
+	//		step.VarName1 = codeBlock.Chars
+	//		step.ValueString1 = strings.Join(values, " ")
+	//		codePre.addCodeStep(codeBlock, step)
+	//	}
+	//	nextNo = codeBlock.NextNo
+	//}
+	//
+	//codeBlock.WordType = CwtKeyWord
+
+}
 func (codePre *CodePre) DefineText(codeBlock *CodeBlock) {
-	//nowCodeBlock := codePre.NowCodeBlock
-	//nowCodeBlock.Word = nowCodeBlock.getChars()
 	var values []string
 	isDef := false
 	nextNo := codeBlock.NextNo
 	if nextNo >= 0 {
-		nextCodeBlock := codePre.fileCode.AllCodeBlock[nextNo]
+		nextCodeBlock := codePre.getCodeBlock(nextNo)
 		if nextCodeBlock.BlockType == CbtColon {
 			isDef = true
 			childNo := nextCodeBlock.FirstChildNo
 			for childNo > 0 {
-				childCodeBlock := &codePre.fileCode.AllCodeBlock[childNo]
+				childCodeBlock := codePre.getCodeBlock(childNo)
 				childCodeBlock.WordType = CwtTxt
 				//childCodeBlock.Word = c.getChars()
 				values = append(values, childCodeBlock.Chars)
@@ -442,8 +560,9 @@ func (codePre *CodePre) DefineText(codeBlock *CodeBlock) {
 		step := CodeStep{}
 		step.CodeStepType = CstDefineText
 		step.VarName1 = codeBlock.Chars
-		step.ValueString = strings.Join(values, " ")
-		codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
+		step.ValueString1 = strings.Join(values, " ")
+		codePre.addCodeStep(codeBlock, step)
+		//codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
 		//nowCodeBlock.globalVars.SetByName(nowCodeBlock.Word, strings.Join(values, " "))
 	} else {
 		codeBlock.WordType = CwtConstant
@@ -452,15 +571,14 @@ func (codePre *CodePre) DefineText(codeBlock *CodeBlock) {
 	return
 }
 func (codePre *CodePre) DefineVar(codeBlock *CodeBlock, varType CodeWordType) {
-
 	nextNo := codeBlock.NextNo
 	if nextNo >= 0 {
-		nextCodeBlock := codePre.fileCode.AllCodeBlock[nextNo]
+		nextCodeBlock := codePre.getCodeBlock(nextNo)
 		if nextCodeBlock.BlockType == CbtColon {
 
 			childNo := nextCodeBlock.FirstChildNo
 			for childNo >= 0 {
-				child := &codePre.fileCode.AllCodeBlock[childNo]
+				child := codePre.getCodeBlock(childNo)
 				codePre.VarStatement(child, varType)
 
 				childNo = child.NextNo
@@ -470,11 +588,6 @@ func (codePre *CodePre) DefineVar(codeBlock *CodeBlock, varType CodeWordType) {
 
 	codeBlock.WordType = CwtKeyWord
 
-	//cwt := CwtLocalVar
-	//if codePre.NowCodeBlock.getCodeArea() == codePre.FileCodeBlock {
-	//	cwt = CwtGlobalVar
-	//}
-	//return CodeBlockDefineVar(codePre.NowCodeBlock, cwt)
 }
 func (codePre *CodePre) VarStatement(codeBlock *CodeBlock, varType CodeWordType) (err error) {
 	switch codeBlock.BlockType {
@@ -496,13 +609,14 @@ func (codePre *CodePre) VarStatement(codeBlock *CodeBlock, varType CodeWordType)
 			step.CodeStepType = CstDefineFunReturn
 		}
 		if step.CodeStepType != CstNone {
-			codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
+			codePre.addCodeStep(codeBlock, step)
+			//codePre.nowLineCodeBlock.Steps = append(codePre.nowLineCodeBlock.Steps, step)
 		}
 
 	case CbtLine, CbtChildLine:
 		childNo := codeBlock.FirstChildNo
 		for childNo >= 0 {
-			child := &codePre.fileCode.AllCodeBlock[childNo]
+			child := codePre.getCodeBlock(childNo)
 			codePre.VarStatement(child, varType)
 			childNo = child.NextNo
 		}
@@ -511,13 +625,11 @@ func (codePre *CodePre) VarStatement(codeBlock *CodeBlock, varType CodeWordType)
 }
 
 func (codePre *CodePre) DefineFun(codeBlock *CodeBlock) {
-	//nowCodeBlock := codePre.NowCodeBlock
-	//nowCodeBlock.Word = nowCodeBlock.getChars()
 	var funNameWords []string
 	var returnCodeBlock *CodeBlock
 	next := codeBlock
 	for next.NextNo >= 0 {
-		next = &codePre.fileCode.AllCodeBlock[next.NextNo]
+		next = codePre.getCodeBlock(next.NextNo)
 		if next.BlockType == CbtColon || next.BlockType == CbtLine {
 			break
 		}
@@ -531,7 +643,7 @@ func (codePre *CodePre) DefineFun(codeBlock *CodeBlock) {
 	funName := strings.Join(funNameWords, "")
 
 	if funName != "" {
-		funCodeBlock := &codePre.fileCode.AllCodeBlock[codeBlock.ParNo]
+		funCodeBlock := codePre.getCodeBlock(codeBlock.ParNo)
 		funCodeBlock.BlockType = CbtFun
 		step := CodeStep{}
 		step.CodeStepType = CstDefineFun
@@ -547,29 +659,56 @@ func (codePre *CodePre) DefineFun(codeBlock *CodeBlock) {
 
 	}
 
-	//funCodeBlock.getCodeArea().functions.SetByName(funName, funCodeBlock)
-	////funCodeBlock.getCodeArea().localVars.SetByName(returnCodeBlock.getChars(), funCodeBlock)
-	////func (codePre *CodePre) AddFun(FunName string, fun ZFun) {
-	////	codePre.FileCodeBlock.functions.SetByName(FunName, ZValue(fun))
-	////
-	////}
-	////func (codePre *CodePre) GetFun(FunName string) (exist bool, fun ZFun) {
-	////	k := codePre.FileCodeBlock.functions.GetByName(FunName)
-	////	fun, exist = k.(ZFun)
-	////	return
-	////}
-	//
-	////todo 返回参数名添加到本地变量列表中
-	//_ = returnCodeBlock
-
 	return
 }
 
-func (codePre *CodePre) CheckOperator(codeBlock *CodeBlock) (err error) {
+func (codePre *CodePre) checkString(codeBlock *CodeBlock) (err error) {
+	codeBlock.WordType = CwtString
+	return
+}
+func (codePre *CodePre) checkBracket(codeBlock *CodeBlock) (err error) {
+	codeBlock.WordType = CWtBracket
+	return
+}
+
+func (codePre *CodePre) checkNumber(codeBlock *CodeBlock) (err error) {
 	identifier := codeBlock.Chars
-	operator, ok := codePre.GetOperator(identifier)
+	if strings.Index(identifier, ".") >= 0 {
+		_, e := strconv.ParseFloat(identifier, 64)
+		if e == nil {
+			codeBlock.WordType = CwtFloat
+		}
+
+	} else {
+		_, e := strconv.Atoi(identifier)
+		if e == nil {
+			codeBlock.WordType = CwtInt
+		}
+	}
+	return
+}
+func (codePre *CodePre) checkOperator(codeBlock *CodeBlock) (err error) {
+	identifier := codeBlock.Chars
+	operator, ok := codePre.getOperator(identifier)
 	if ok {
 		codeBlock.Operator = operator
+		switch codeBlock.Operator.Type {
+
+		case OtAs:
+			codeBlock.WordType = CwtAs
+		case OtAdd:
+			codeBlock.WordType = CwtAdd
+		case OtSub:
+			codeBlock.WordType = CwtSub
+		case OtMul:
+			codeBlock.WordType = CwtMul
+		case OtDiv:
+			codeBlock.WordType = CwtDiv
+		case OtPoint:
+			codeBlock.WordType = CwtPoint
+
+		}
 	}
+
 	return
 }

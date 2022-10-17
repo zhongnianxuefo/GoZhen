@@ -6,7 +6,7 @@ import (
 
 type KeyWord struct {
 	Name string
-	//Type   KeyWordType
+	//TokenType   KeyWordType
 	PreFun func(*CodePre) (err error)
 }
 
@@ -67,8 +67,8 @@ const (
 func KeyWordToZhenValue(keyWord KeyWord) (value ZValue) {
 
 	//table := make(ZhenValueTable)
-	//table["名称"] = StringToZhenValue(keyWord.Name)
-	//table["类型"] = StringToZhenValue(KeyWordTypeToString(keyWord.Type))
+	//table["名称"] = StringToZhenValue(keyWord.Names)
+	//table["类型"] = StringToZhenValue(KeyWordTypeToString(keyWord.TokenType))
 	//table["预处理函数"] = NewZhenValueFunction(keyWord.PreFun)
 	//value = NewZhenValueTable(table)
 	return ZValue(keyWord)

@@ -28,7 +28,7 @@ func (ot OperatorType) String() string {
 }
 
 type Operator struct {
-	//Name     string
+	//Names     string
 	Type     OperatorType
 	Priority int
 }

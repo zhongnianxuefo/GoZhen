@@ -17,13 +17,15 @@ type CodeFile struct {
 
 	nowPos     CodeBlockPos
 	lastCodeNo int
-	lastChar   rune
+	//lastCodeBlock *CodeBlock
+	lastChar rune
 
 	newLine      bool
 	nowrap       bool
 	bracketCount int
 
-	AllCodeBlock []CodeBlock
+	AllCodeBlock   []CodeBlock
+	allCodeBlockNo map[*CodeBlock]int
 	//AllCodeArea   []CodeArea
 	//CodeBlockArea map[int]int
 	//AllVarNames   *CodeVars
@@ -33,8 +35,14 @@ type CodeFile struct {
 func NewCodeFile(codeTxt string) (codeFile *CodeFile) {
 	codeFile = &CodeFile{}
 	codeFile.allCodeChars = []rune(codeTxt)
+	//charCount := len(codeFile.allCodeChars)
 
-	codeFile.nowPos = CodeBlockPos{startNo: 0, blockLen: 0, LineNo: 1, LineCount: 1, ColNo: 1}
+	//if charCount>100{
+	//	make()
+	//}
+	//
+	//allCodeBlockNo  map[*CodeBlock]int
+	codeFile.nowPos = CodeBlockPos{startNo: 0, blockLen: 0, LineNo: 1, lineCount: 1, ColNo: 1}
 	codeFile.lastCodeNo = codeFile.newCodeBlock(codeFile.nowPos, CbtFile)
 
 	codeFile.lastChar = 0
@@ -44,7 +52,7 @@ func NewCodeFile(codeTxt string) (codeFile *CodeFile) {
 
 	//a := NewVarNames()
 	//codeFile.AllVarNames = &a
-	//codeFile.AllVarNames.AddVar(CodeVarKey{Name: "test", Type: CvtKeyWords})
+	//codeFile.AllVarNames.AddVar(CodeVarKey{Names: "test", TokenType: CvtKeyWords})
 	//codeFile.MainCodeBlock = &codeFile.AllCodeBlock[0]
 
 	return
@@ -131,12 +139,33 @@ func (code *CodeFile) newCodeBlock(pos CodeBlockPos, charType CodeBlockType) (co
 	code.AllCodeBlock = append(code.AllCodeBlock, codeBlock)
 	return
 }
+func (code *CodeFile) newCodeBlock2(pos CodeBlockPos, charType CodeBlockType) (codeBlock *CodeBlock) {
+	//codeBlockNo := len(code.AllCodeBlock)
 
-func (code *CodeFile) newCodeBlock2(sourceCodeBlaock *CodeBlock) (codeBlock CodeBlock) {
-	codeBlock = *sourceCodeBlaock
-	code.AllCodeBlock = append(code.AllCodeBlock, codeBlock)
+	codeBlock = &CodeBlock{}
+	codeBlock.Pos = pos
+	codeBlock.BlockType = charType
+	switch charType {
+	case CbtLine, CbtChildLine:
+		codeBlock.Pos.blockLen = 0
+	}
+
+	//codeBlock.No = codeBlockNo
+	codeBlock.ParNo = -1
+	codeBlock.FirstChildNo = -1
+	codeBlock.LastChildNo = -1
+	codeBlock.NextNo = -1
+
+	if codeBlock.Pos.blockLen > 0 {
+		s := codeBlock.Pos.startNo
+		e := codeBlock.Pos.startNo + codeBlock.Pos.blockLen
+		codeBlock.Chars = string(code.allCodeChars[s:e])
+	}
+
+	code.AllCodeBlock = append(code.AllCodeBlock, *codeBlock)
 	return
 }
+
 func (code *CodeFile) getChildCodeBlock(codeBlockNo int) (childItems []int) {
 	n := code.AllCodeBlock[codeBlockNo].FirstChildNo
 	for n >= 0 {
@@ -211,7 +240,7 @@ func (code *CodeFile) setNowCodeBlockEndPos() {
 	}
 	endLineNo := endPos.LineNo
 	if endLineNo > codeBlock.Pos.LineNo {
-		codeBlock.Pos.LineCount = endLineNo - codeBlock.Pos.LineNo + 1
+		codeBlock.Pos.lineCount = endLineNo - codeBlock.Pos.LineNo + 1
 	}
 	if codeBlock.Pos.blockLen > 0 {
 		s := codeBlock.Pos.startNo
@@ -858,7 +887,7 @@ func (code *CodeFile) codeBlockToXmlElement(codeBlockNo int, element *etree.Elem
 		//e.CreateAttr("len", strconv.Itoa(codeBlock.Pos.blockLen))
 
 		if codeBlock.LineIndent > 0 {
-			e.CreateAttr("LineIndent", strconv.Itoa(codeBlock.LineIndent))
+			e.CreateAttr("lineIndent", strconv.Itoa(codeBlock.LineIndent))
 		}
 
 		c := codeBlock.FirstChildNo
@@ -885,19 +914,22 @@ func (code *CodeFile) codeStepToXmlElement(codeSetp CodeStep, element *etree.Ele
 	if codeSetp.TempVarNo1 != 0 {
 		e.CreateAttr("临时变量1", strconv.Itoa(codeSetp.TempVarNo1))
 	}
+	if codeSetp.ValueString1 != "" {
+		e.CreateAttr("值1", codeSetp.ValueString1)
+	}
 	if codeSetp.VarName2 != "" {
 		e.CreateAttr("变量2", codeSetp.VarName2)
 	}
 	if codeSetp.TempVarNo2 != 0 {
 		e.CreateAttr("临时变量2", strconv.Itoa(codeSetp.TempVarNo2))
 	}
+	if codeSetp.ValueString2 != "" {
+		e.CreateAttr("值2", codeSetp.ValueString2)
+	}
 	if codeSetp.ReturnVarNo != 0 {
 		e.CreateAttr("计算结果临时变量", strconv.Itoa(codeSetp.ReturnVarNo))
 	}
 
-	if codeSetp.ValueString != "" {
-		e.CreateAttr("值", codeSetp.ValueString)
-	}
 	//e.CreateAttr("line", strconv.Itoa(codeBlock.Pos.LineNo))
 	//e.CreateAttr("col", strconv.Itoa(codeBlock.Pos.ColNo))
 }

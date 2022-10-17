@@ -296,7 +296,7 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 //
 //	default:
 //		fmt.Println(s.codeStepType)
-//		err = errors.New("未知指令")
+//		err = errors.Copy("未知指令")
 //
 //	}
 //	return
@@ -326,7 +326,7 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 //}
 
 //
-//func (zhen *ZhenState) GetKeyWord(identifier string) (isKeyWord bool, keyWord ZhenValue, err error) {
+//func (zhen *ZhenState) getKeyWord(identifier string) (isKeyWord bool, keyWord ZhenValue, err error) {
 //	value := zhen.GetGlobalVarValue("@关键字")
 //	if value.valueType == ZvtObject {
 //
@@ -349,7 +349,7 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 //	return
 //}
 //
-//func (zhen *ZhenState) AddKeyWord(keyWord KeyWord) (err error) {
+//func (zhen *ZhenState) addKeyWord(keyWord KeyWord) (err error) {
 //	globalVarName := "@关键字"
 //
 //	value := zhen.GetGlobalVarValue(globalVarName)
@@ -358,7 +358,7 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 //		value = NewZhenValueTable(t)
 //	}
 //
-//	value.valueTable[keyWord.Name] = KeyWordToZhenValue(keyWord)
+//	value.valueTable[keyWord.Names] = KeyWordToZhenValue(keyWord)
 //
 //	zhen.SetGlobalVarValue(globalVarName, value)
 //	return
@@ -372,35 +372,35 @@ func (zhen *ZhenState) AddCode(code ZhenCodeOld) {
 //	//KwtDefineFun
 //	//KwtDefineFunPara
 //	//KwtDefineFunReturn
-//	zhen.AddKeyWord(KeyWord{Name: "程序名", Type: KwtDefineText, PreFun: DefineText})
-//	zhen.AddKeyWord(KeyWord{Name: "版本号", Type: KwtDefineText, PreFun: DefineText})
+//	zhen.addKeyWord(KeyWord{Names: "程序名", TokenType: KwtDefineText, PreFun: DefineText})
+//	zhen.addKeyWord(KeyWord{Names: "版本号", TokenType: KwtDefineText, PreFun: DefineText})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "定义", Type: KwtDefineVar, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "定义", TokenType: KwtDefineVar, PreFun: DefineVar})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "常量", Type: KwtDefineConstant, PreFun: DefineConstantPreFun})
-//	zhen.AddKeyWord(KeyWord{Name: "定义常量", Type: KwtDefineConstant, PreFun: DefineConstantPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "常量", TokenType: KwtDefineConstant, PreFun: DefineConstantPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "定义常量", TokenType: KwtDefineConstant, PreFun: DefineConstantPreFun})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "变量", Type: KwtDefineVar, PreFun: DefineVar})
-//	zhen.AddKeyWord(KeyWord{Name: "定义变量", Type: KwtDefineVar, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "变量", TokenType: KwtDefineVar, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "定义变量", TokenType: KwtDefineVar, PreFun: DefineVar})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "全局变量", Type: KwtDefineGlobalVar, PreFun: DefineGlobalVarPreFun})
-//	zhen.AddKeyWord(KeyWord{Name: "定义全局变量", Type: KwtDefineGlobalVar, PreFun: DefineGlobalVarPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "全局变量", TokenType: KwtDefineGlobalVar, PreFun: DefineGlobalVarPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "定义全局变量", TokenType: KwtDefineGlobalVar, PreFun: DefineGlobalVarPreFun})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "如果", Type: KwtIf, PreFun: DefineVar})
-//	zhen.AddKeyWord(KeyWord{Name: "否则", Type: KwtElse, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "如果", TokenType: KwtIf, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "否则", TokenType: KwtElse, PreFun: DefineVar})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "循环", Type: KwtWhile, PreFun: DefineVar})
-//	zhen.AddKeyWord(KeyWord{Name: "按条件循环", Type: KwtWhile, PreFun: DefineVar})
-//	zhen.AddKeyWord(KeyWord{Name: "按次数循环", Type: KwtFor, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "循环", TokenType: KwtWhile, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "按条件循环", TokenType: KwtWhile, PreFun: DefineVar})
+//	zhen.addKeyWord(KeyWord{Names: "按次数循环", TokenType: KwtFor, PreFun: DefineVar})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "定义函数", Type: KwtDefineFun, PreFun: DefineFun})
+//	zhen.addKeyWord(KeyWord{Names: "定义函数", TokenType: KwtDefineFun, PreFun: DefineFun})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "参数", Type: KwtDefineFunPara, PreFun: DefineFunParaPreFun})
-//	zhen.AddKeyWord(KeyWord{Name: "返回", Type: KwtDefineFunReturn, PreFun: DefineFunReturnPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "参数", TokenType: KwtDefineFunPara, PreFun: DefineFunParaPreFun})
+//	zhen.addKeyWord(KeyWord{Names: "返回", TokenType: KwtDefineFunReturn, PreFun: DefineFunReturnPreFun})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "运行", Type: KwtCallFun, PreFun: DefineFun})
+//	zhen.addKeyWord(KeyWord{Names: "运行", TokenType: KwtCallFun, PreFun: DefineFun})
 //
-//	zhen.AddKeyWord(KeyWord{Name: "显示", Type: KwtFun, PreFun: DefineFun})
+//	zhen.addKeyWord(KeyWord{Names: "显示", TokenType: KwtFun, PreFun: DefineFun})
 //
 //	return
 //}

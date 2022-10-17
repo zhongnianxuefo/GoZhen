@@ -58,7 +58,7 @@ func (toXml *CodeBlockToXml) ToXmlElement(codeBlock *CodeBlock2, element *etree.
 		e.CreateAttr("len", strconv.Itoa(codeBlock.Pos.BlockLen))
 
 		if codeBlock.LineIndent > 0 {
-			e.CreateAttr("LineIndent", strconv.Itoa(codeBlock.LineIndent))
+			e.CreateAttr("lineIndent", strconv.Itoa(codeBlock.LineIndent))
 		}
 		//for _, c := range codeBlock.cod {
 		//	toXml.codeBlockToXmlElement(c, e)
